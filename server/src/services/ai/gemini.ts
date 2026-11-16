@@ -78,6 +78,7 @@ export class GeminiProvider implements AiProvider {
                 topP: 0.9,
                 maxOutputTokens: MAX_OUTPUT_TOKENS,
                 responseMimeType: 'application/json',
+                thinkingConfig: { thinkingLevel: 'minimal' },
               },
             }),
             signal: controller.signal,

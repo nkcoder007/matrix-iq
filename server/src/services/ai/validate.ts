@@ -249,9 +249,7 @@ export function validateAnalysis(
         'The AI connected a concept that was not in its concept list.',
       );
     }
-    if (from.id === to.id) {
-      throw new AnalysisValidationError('The AI returned a connection from a concept to itself.');
-    }
+    if (from.id === to.id) continue;
 
     if (typeof item.type !== 'string' || !RELATION_IDS.includes(item.type as RelationType)) {
       throw new AnalysisValidationError('The AI returned an unsupported relationship type.');
@@ -370,12 +368,12 @@ export function validateAnalysis(
               connection.from === to?.id &&
               connection.to === from?.id)),
       );
-      if (!from || !to || !match) {
+      if (!from || !to) {
         throw new AnalysisValidationError(
-          'An insight referenced a connection that was not in the connection list.',
+          'An insight referenced a concept that was not in the concept list.',
         );
       }
-      edgeId = match.id;
+      edgeId = match?.id;
     }
 
     const rawConfidence = score(item.confidence, 'insight confidence');

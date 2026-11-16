@@ -52,6 +52,7 @@ cd server
 npm install
 cp .env.example .env
 npm run dev      # http://localhost:8787
+npm run start    # single process at http://localhost:8787 (use for the demo)
 npm test
 npm run typecheck
 ```
@@ -229,7 +230,7 @@ CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 UPLOAD_MAX_BYTES=10485760    # 10 MiB per file or pasted document
 PDF_MAX_PAGES=200
 GEMINI_API_KEY=              # server-only; analysis is disabled while empty
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 AI_TIMEOUT_MS=45000
 AI_MAX_DOCUMENT_CHARS=12000
 AI_MAX_TOTAL_CHARS=60000
@@ -272,7 +273,9 @@ evidence excerpt found in one of the project documents. Concepts are deduplicate
 label and receive stable project-scoped IDs. Connections and insights are labelled **direct
 evidence**, **reasonable inference** (at least two pieces of evidence), or **speculative**
 (confidence capped; connections marked as suggested). Invalid, unsupported or ungrounded output
-fails the analysis without changing the previous graph.
+fails the analysis without changing the previous graph. A self-connection carries no usable
+meaning and is discarded; one validation retry is attempted before an otherwise invalid generation
+fails the analysis.
 
 ## Project structure
 
@@ -362,8 +365,9 @@ aggregation independent of React and covered by tests.
 - No authentication, user accounts, server database or permanent storage.
 - AI analysis requires remote mode, a configured `GEMINI_API_KEY`, and internet access from the
   backend. Local mode intentionally stays network-free and marks new sources as waiting.
-- Only the bundled sample corpus has seeded insights. AI analysis produces concepts and
-  connections with evidence; it does not yet generate the Phase 4 insight interface.
+- Local mode uses the bundled sample corpus and its seeded insights. Remote AI analysis produces
+  concepts, connections and insights with evidence, and the Insights tab reads those session-scoped
+  results.
 - Local mode still stores PDFs without parsing them. PDF extraction is available only in remote mode.
 - Remote source content, metadata and mappings are kept only for the current browser and backend
   session. They are never written to IndexedDB. After a reload, opening the source fetches its text

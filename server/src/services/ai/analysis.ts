@@ -1,7 +1,7 @@
 import type { AiConfig } from '../../config';
 import type { KnowledgeDocument } from '../../types';
 import type { AiDocument, AiProvider } from './types';
-import { validateAnalysis } from './validate';
+import { AnalysisValidationError, validateAnalysis } from './validate';
 import type { ValidatedAnalysis } from './validate';
 
 const SYSTEM_RULES = `You are MatrixIQ's cross-document analysis engine.
@@ -13,12 +13,16 @@ different documents, including conceptual similarities. Do not invent causal lin
 Evidence rules:
 - Every concept must include at least one exact excerpt copied from a source document.
 - Every connection must include exact excerpts copied from source documents.
+- Copy every excerpt character-for-character from a single contiguous passage. Do not paraphrase,
+  correct spelling, or join separate non-adjacent sentences into one excerpt.
 - Use "direct" only when the source explicitly states the relationship.
 - Use "inference" only when a logical connection is supported by at least two different pieces of evidence.
 - Use "speculative" for an analogy or hypothesis that needs further investigation. Mark it as speculative
   in the explanation, and never present it as established fact.
 - For conceptual similarities, prefer "similar" or "related" over causal relationship types.
 - A connection supported by more than one document is stronger evidence for a cross-document link.
+- Never create a connection from a concept to itself, and never reference a concept that is not in
+  the concepts list.
 
 Insight rules:
 - Generate approximately 3 to 5 useful insights from the combined document set.
@@ -138,6 +142,17 @@ export async function runDocumentAnalysis(
 ): Promise<ValidatedAnalysis> {
   const prepared = prepareAnalysisDocuments(documents, config);
   const prompt = buildAnalysisPrompt(projectName, prepared);
-  const raw = await provider.analyze(prompt);
-  return validateAnalysis(raw, prepared, projectId);
+  let lastValidationError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const raw = await provider.analyze(prompt);
+    try {
+      return validateAnalysis(raw, prepared, projectId);
+    } catch (error) {
+      if (!(error instanceof AnalysisValidationError) || attempt === 1) throw error;
+      lastValidationError = error;
+    }
+  }
+
+  throw lastValidationError;
 }
