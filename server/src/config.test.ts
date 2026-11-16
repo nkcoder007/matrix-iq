@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CORS_ORIGINS,
   DEFAULT_PDF_MAX_PAGES,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_AI_TIMEOUT_MS,
   DEFAULT_SESSION_SWEEP_MS,
   DEFAULT_SESSION_TTL_MS,
   DEFAULT_UPLOAD_MAX_BYTES,
   readCorsOrigins,
+  readAiConfig,
   readSessionStoreConfig,
   readUploadConfig,
 } from './config';
@@ -58,6 +61,34 @@ describe('backend configuration', () => {
     expect(readUploadConfig({ UPLOAD_MAX_BYTES: '0', PDF_MAX_PAGES: 'nope' })).toEqual({
       maxBytes: DEFAULT_UPLOAD_MAX_BYTES,
       maxPdfPages: DEFAULT_PDF_MAX_PAGES,
+    });
+  });
+
+  it('reads AI provider configuration without exposing the key to browser config', () => {
+    expect(readAiConfig({})).toEqual({
+      provider: 'gemini',
+      apiKey: '',
+      model: DEFAULT_GEMINI_MODEL,
+      timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+      maxDocumentChars: 12_000,
+      maxTotalChars: 60_000,
+    });
+
+    expect(
+      readAiConfig({
+        GEMINI_API_KEY: 'server-secret',
+        GEMINI_MODEL: 'gemini-test',
+        AI_TIMEOUT_MS: '9000',
+        AI_MAX_DOCUMENT_CHARS: '5000',
+        AI_MAX_TOTAL_CHARS: '20000',
+      }),
+    ).toEqual({
+      provider: 'gemini',
+      apiKey: 'server-secret',
+      model: 'gemini-test',
+      timeoutMs: 9000,
+      maxDocumentChars: 5000,
+      maxTotalChars: 20_000,
     });
   });
 });

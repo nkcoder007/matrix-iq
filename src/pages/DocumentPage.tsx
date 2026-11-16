@@ -134,8 +134,8 @@ export function DocumentPage() {
                 <div>
                   <p className="doc-queued__title">Waiting for analysis</p>
                   <p className="doc-queued__text">
-                    This source belongs to {workspace.name} and is visible only here. Automatic
-                    analysis is not connected in this build, so it has no ideas or connections yet.
+                    This source belongs to {workspace.name} and is visible only here. Local mode
+                    does not run AI analysis, so it has no ideas or connections yet.
                   </p>
                 </div>
               </section>
@@ -148,8 +148,8 @@ export function DocumentPage() {
                   ) : null}
                 </div>
                 <p className="doc-muted">
-                  The original content is saved in this browser so a future analysis service can
-                  read it. Nothing is sent anywhere today.
+                  The original content is saved in this browser. Local mode keeps it here and does
+                  not send it anywhere.
                 </p>
                 {document.content ? (
                   <pre className="doc-source-text">{document.content}</pre>

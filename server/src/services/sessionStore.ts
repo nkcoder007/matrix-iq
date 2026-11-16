@@ -75,6 +75,7 @@ export class MemorySessionStore implements SessionStore {
       prefs: { ...DEFAULT_PREFS },
       fileBuffers: new Map(),
       analysisStatus: new Map(),
+      projectAnalysis: new Map(),
     };
     this.sessions.set(sessionId, session);
     return session;

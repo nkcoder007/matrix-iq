@@ -125,7 +125,8 @@ export function InsightsPage() {
       {category.id === 'broader-insights' && items.length > 0 ? (
         <p className="insight-detail__note">
           This is a digest, not a new synthesis: one highest-confidence finding from each category.
-          New cross-category conclusions will be added when the analysis service is connected.
+          Cross-document AI results appear in the project graph; generated insight categories are
+          not part of this phase.
         </p>
       ) : null}
 
@@ -142,7 +143,7 @@ export function InsightsPage() {
             title={`No ${category.title.toLowerCase()} yet`}
             text={
               category.empty +
-              ' Analysis is not connected in this build; queued sources stay without findings until it is.'
+              ' AI analysis produces concepts and connections on the Sources screen; these insight categories remain demo content for now.'
             }
             action={
               <Link

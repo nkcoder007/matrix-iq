@@ -25,6 +25,16 @@ export type DocumentStatus = 'queued' | 'extracted' | 'failed';
 
 export type AnalysisStatus = 'queued' | 'running' | 'complete' | 'failed';
 
+export type ProjectAnalysisStatus = 'idle' | 'running' | 'complete' | 'failed' | 'stale';
+
+export type EvidenceLevel = 'direct' | 'inference' | 'speculative';
+
+export interface EvidenceReference {
+  documentId: string;
+  excerpt: string;
+  note?: string;
+}
+
 export type InsightKind = 'bridge' | 'gap' | 'tension' | 'pattern';
 
 export interface Workspace {
@@ -53,6 +63,8 @@ export interface Concept {
   definition: string;
   documentIds: string[];
   mentions: number;
+  /** Supporting passages from the source documents. */
+  evidence?: EvidenceReference[];
 }
 
 export interface KnowledgeDocument {
@@ -92,6 +104,8 @@ export interface Connection {
   explanation: string;
   isBridge: boolean;
   suggested?: boolean;
+  evidenceLevel?: EvidenceLevel;
+  evidence?: EvidenceReference[];
 }
 
 export type Theme = 'light' | 'dark';
@@ -141,6 +155,20 @@ export interface SessionData {
   fileBuffers: Map<string, { buffer: Buffer; fileName: string; mimeType: string }>;
   /* Analysis status per document */
   analysisStatus: Map<string, { status: AnalysisStatus; error?: string; updatedAt: string }>;
+  /* One project-level analysis job/result per workspace. */
+  projectAnalysis: Map<string, ProjectAnalysisRecord>;
+}
+
+export interface ProjectAnalysisRecord {
+  status: ProjectAnalysisStatus;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  error?: string;
+  documentIds: string[];
+  conceptCount: number;
+  connectionCount: number;
+  model?: string;
 }
 
 export interface SessionStore {
@@ -169,6 +197,19 @@ export interface SourceAnalysis {
   status: AnalysisStatus;
   error?: string;
   updatedAt: string;
+}
+
+export interface ProjectAnalysisStatusResponse {
+  projectId: string;
+  status: ProjectAnalysisStatus;
+  documentCount: number;
+  conceptCount: number;
+  connectionCount: number;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  error?: string;
+  model?: string;
 }
 
 export interface ProjectInput {

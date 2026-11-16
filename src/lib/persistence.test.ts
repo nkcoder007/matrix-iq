@@ -73,6 +73,20 @@ describe('withoutRemoteSources', () => {
       fileKey: 'remote-file',
     };
     const local = { ...DOCUMENTS[1], id: 'local-doc', content: 'browser text' };
+    const remoteConcept = {
+      ...CONCEPTS[0],
+      id: 'concept-remote',
+      documentIds: ['remote-doc'],
+      evidence: [{ documentId: 'remote-doc', excerpt: 'temporary backend text' }],
+    };
+    const remoteConnection = {
+      ...CONNECTIONS[0],
+      id: 'connection-remote',
+      from: 'concept-remote',
+      to: 'concept-remote',
+      evidenceLevel: 'direct' as const,
+      evidence: [{ documentId: 'remote-doc', excerpt: 'temporary backend text' }],
+    };
     const prepared = withoutRemoteSources({
       ...snapshot,
       state: {
@@ -81,6 +95,9 @@ describe('withoutRemoteSources', () => {
           { ...WORKSPACES[0], id: 'ws-test', documentIds: ['remote-doc', 'local-doc'] },
         ],
         documents: [remote, local],
+        concepts: [remoteConcept, CONCEPTS[1]],
+        connections: [remoteConnection],
+        insights: [],
       },
     });
 
@@ -88,5 +105,7 @@ describe('withoutRemoteSources', () => {
     expect(prepared.state.documents[0]?.id).toBe('local-doc');
     expect(prepared.state.documents[0]?.content).toBe('browser text');
     expect(prepared.state.workspaces[0]?.documentIds).toEqual(['local-doc']);
+    expect(prepared.state.concepts.map((concept) => concept.id)).toEqual([CONCEPTS[1]?.id]);
+    expect(prepared.state.connections).toEqual([]);
   });
 });

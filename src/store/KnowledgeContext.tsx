@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CLUSTERS,
@@ -32,6 +32,7 @@ import type {
   Insight,
   KnowledgeDocument,
   KnowledgeState,
+  ProjectAnalysisStatus,
   Theme,
   Workspace,
 } from '../types';
@@ -40,13 +41,16 @@ import { deleteRemoteProject, ensureRemoteProject } from '../services/remoteProj
 import {
   clearRemoteSession,
   forgetRemoteDocument,
+  getRemoteProject,
   getRemoteDocuments,
   hasRemoteSessionData,
   localProjectIdForRemoteProject,
   pruneRemoteSession,
+  remoteProjectEntries,
   rememberRemoteDocuments,
   renameRemoteDocument,
 } from '../services/remoteSession';
+import { mergeRemoteGraph, removeRemoteSessionData } from '../lib/remoteGraph';
 
 export interface NewWorkspaceInput {
   name: string;
@@ -106,6 +110,12 @@ interface KnowledgeValue {
   loadRemoteDocumentContent: (id: string) => Promise<void>;
   renameDocument: (id: string, title: string) => void;
   deleteDocument: (id: string) => Promise<boolean>;
+
+  analysisStatus: ProjectAnalysisStatus | null;
+  analysisError: string | null;
+  analysisBusy: boolean;
+  startAnalysis: () => Promise<void>;
+  refreshAnalysis: () => Promise<void>;
 
   storageError: string | null;
   dismissStorageError: () => void;
@@ -190,23 +200,6 @@ function mergeRemoteDocuments(
   };
 }
 
-function removeRemoteDocuments(state: KnowledgeState): KnowledgeState {
-  const remoteIds = new Set(
-    state.documents
-      .filter((document) => Boolean(document.remoteProjectId))
-      .map((document) => document.id),
-  );
-  if (remoteIds.size === 0) return state;
-  return {
-    ...state,
-    documents: state.documents.filter((document) => !remoteIds.has(document.id)),
-    workspaces: state.workspaces.map((workspace) => ({
-      ...workspace,
-      documentIds: workspace.documentIds.filter((id) => !remoteIds.has(id)),
-    })),
-  };
-}
-
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<KnowledgeState>(createSeedState);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
@@ -214,6 +207,10 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<GraphPreferences>(INITIAL_PREFS);
   const [ready, setReady] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<ProjectAnalysisStatus | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const analysisRunToken = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -247,6 +244,35 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
             }
           }
           nextState = mergeRemoteDocuments(nextState, getRemoteDocuments());
+
+          const entries = remoteProjectEntries();
+          const graphs = await Promise.all(
+            entries.map(async (entry) => {
+              try {
+                return {
+                  entry,
+                  graph: await api.projects.graph(entry.remoteProjectId),
+                };
+              } catch {
+                return null;
+              }
+            }),
+          );
+          if (cancelled) return;
+          for (const item of graphs) {
+            if (!item) continue;
+            if (getRemoteProject(item.entry.localProjectId) !== item.entry.remoteProjectId) {
+              continue;
+            }
+            nextState = mergeRemoteGraph(
+              nextState,
+              item.entry.remoteProjectId,
+              item.graph,
+            );
+          }
+          if (!hasRemoteSessionData()) {
+            nextState = removeRemoteSessionData(nextState);
+          }
         } else {
           clearRemoteSession();
         }
@@ -269,7 +295,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return subscribeToSessionChange(() => {
       clearRemoteSession();
-      setState((current) => removeRemoteDocuments(current));
+      setState((current) => removeRemoteSessionData(current));
     });
   }, []);
 
@@ -360,6 +386,159 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     () => new Map(documents.map((document) => [document.id, document])),
     [documents],
   );
+
+  const loadRemoteGraph = useCallback(
+    async (localProjectId: string, remoteProjectId: string) => {
+      if (getRemoteProject(localProjectId) !== remoteProjectId) return;
+      try {
+        const graph = await api.projects.graph(remoteProjectId);
+        if (getRemoteProject(localProjectId) !== remoteProjectId) return;
+        setState((current) => mergeRemoteGraph(current, remoteProjectId, graph));
+      } catch {
+        // Source metadata remains visible if the temporary session disappeared.
+      }
+    },
+    [],
+  );
+
+  const refreshAnalysis = useCallback(async () => {
+    if (!backendConfig.configured) return;
+    const remoteProjectId = getRemoteProject(workspace.id);
+    if (!remoteProjectId) {
+      setAnalysisStatus(null);
+      return;
+    }
+
+    try {
+      const status = await api.analysis.status(remoteProjectId);
+      setAnalysisStatus(status);
+      setAnalysisError(status.status === 'failed' ? (status.error ?? null) : null);
+      if (status.status === 'complete') {
+        await loadRemoteGraph(workspace.id, remoteProjectId);
+      }
+    } catch (cause) {
+      setAnalysisError(
+        cause instanceof ApiError
+          ? cause.message
+          : 'The analysis status could not be loaded.',
+      );
+    }
+  }, [loadRemoteGraph, workspace.id]);
+
+  const pollAnalysis = useCallback(
+    async (remoteProjectId: string, localProjectId: string, token: number) => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        if (analysisRunToken.current !== token) return;
+
+        let status: ProjectAnalysisStatus;
+        try {
+          status = await api.analysis.status(remoteProjectId);
+        } catch (cause) {
+          if (analysisRunToken.current !== token) return;
+          setAnalysisError(
+            cause instanceof ApiError
+              ? cause.message
+              : 'The analysis status could not be loaded.',
+          );
+          return;
+        }
+        if (analysisRunToken.current !== token) return;
+
+        setAnalysisStatus(status);
+        if (status.status === 'complete') {
+          setAnalysisError(null);
+          await loadRemoteGraph(localProjectId, remoteProjectId);
+          return;
+        }
+        if (status.status === 'failed' || status.status === 'stale' || status.status === 'idle') {
+          setAnalysisError(status.error ?? null);
+          return;
+        }
+      }
+
+      if (analysisRunToken.current === token) {
+        setAnalysisError('Analysis is still running. Refresh in a moment to see the result.');
+      }
+    },
+    [loadRemoteGraph],
+  );
+
+  const startAnalysis = useCallback(async () => {
+    if (!backendConfig.configured) {
+      setAnalysisError('Cross-document analysis requires the backend in remote mode.');
+      return;
+    }
+    if (analysisBusy || analysisStatus?.status === 'running') return;
+    if (documents.length === 0) {
+      setAnalysisError('Add at least one source before running analysis.');
+      return;
+    }
+
+    setAnalysisBusy(true);
+    setAnalysisError(null);
+    const token = analysisRunToken.current + 1;
+    analysisRunToken.current = token;
+
+    try {
+      const remoteProjectId = await ensureRemoteProject(workspace);
+      const status = await api.analysis.start(remoteProjectId);
+      if (analysisRunToken.current !== token) return;
+      setAnalysisStatus(status);
+      if (status.status === 'running') {
+        void pollAnalysis(remoteProjectId, workspace.id, token);
+      }
+    } catch (cause) {
+      if (analysisRunToken.current === token) {
+        setAnalysisError(
+          cause instanceof ApiError ? cause.message : 'The analysis could not be started.',
+        );
+      }
+    } finally {
+      setAnalysisBusy(false);
+    }
+  }, [analysisBusy, analysisStatus?.status, documents.length, pollAnalysis, workspace]);
+
+  const documentIdsKey = workspace.documentIds.join('|');
+
+  useEffect(() => {
+    analysisRunToken.current += 1;
+    const token = analysisRunToken.current;
+    setAnalysisBusy(false);
+    setAnalysisError(null);
+    setAnalysisStatus(null);
+
+    if (!backendConfig.configured) return;
+    const remoteProjectId = getRemoteProject(workspace.id);
+    if (!remoteProjectId) return;
+
+    let cancelled = false;
+    void api.analysis
+      .status(remoteProjectId)
+      .then((status) => {
+        if (cancelled) return;
+        setAnalysisStatus(status);
+        setAnalysisError(status.status === 'failed' ? (status.error ?? null) : null);
+        if (status.status === 'complete') {
+          void loadRemoteGraph(workspace.id, remoteProjectId);
+        } else if (status.status === 'running') {
+          void pollAnalysis(remoteProjectId, workspace.id, token);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setAnalysisError(
+            cause instanceof ApiError
+              ? cause.message
+              : 'The analysis status could not be loaded.',
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentIdsKey, loadRemoteGraph, pollAnalysis, workspace.id]);
 
   const switchWorkspace = useCallback((id: string) => {
     setState((current) =>
@@ -506,7 +685,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         words: source.words,
         excerpt: source.content?.slice(0, 280) ?? '',
         summary:
-          'This source is stored in this project and is waiting for analysis. Automatic analysis is not connected in this build.',
+          'This source is stored in this project. Local mode does not run AI analysis; connect the backend and use remote mode to analyse it.',
         content: source.content,
         fileName: source.fileName,
         mimeType: source.mimeType,
@@ -700,6 +879,11 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     loadRemoteDocumentContent,
     renameDocument,
     deleteDocument,
+    analysisStatus,
+    analysisError,
+    analysisBusy,
+    startAnalysis,
+    refreshAnalysis,
     storageError,
     dismissStorageError,
   };

@@ -3,7 +3,8 @@
 A local-first personal knowledge graph with a session-scoped Hono backend. Add sources to a
 project and explore seeded concepts and connections across documents that look unrelated. Local
 mode keeps original text and files in the browser; remote mode uploads PDFs, Markdown and text to
-the backend, which extracts readable text into temporary session memory.
+the backend, which extracts readable text into temporary session memory and can analyse every
+source in a project together with a server-side AI provider.
 
 The app opens on a home page that explains the idea and lists projects. A project workspace holds
 its own sources, graph, insights and saved links; sources never move between projects.
@@ -25,8 +26,9 @@ projects, with or without the sample sources.
 | Local state | **IndexedDB + localStorage fallback** | Projects and source content survive reloads without a server. |
 | Backend | **Hono 4 + Node.js + TypeScript** | Session-scoped project API with in-memory state. |
 | PDF text | **pdf-parse 2** | Server-side PDF text extraction without a browser parser. |
+| AI analysis | **Google Gemini REST API** | Server-side cross-document analysis behind a provider interface. |
 | Icons | Inline SVG components | Small bundle, consistent icon set. |
-| Tests | **Vitest** | Frontend state helpers plus backend session, project and upload tests. |
+| Tests | **Vitest** | Frontend state helpers plus backend session, project, upload and mocked AI analysis tests. |
 
 No UI kit, chart library, CSS framework or state-management package. Frontend runtime
 dependencies are React, React DOM and React Router; the backend uses Hono and Node.js.
@@ -134,8 +136,8 @@ The five categories are:
 3. **Tensions & Contradictions** — where sources disagree or pull against each other.
 4. **Gaps & Open Questions** — threads your sources leave unfinished.
 5. **Broader Insights** — a cross-category digest containing the strongest single finding from each
-   category. It does not claim to synthesize a new conclusion; new synthesis needs the future
-   analysis service.
+   category. It does not claim to synthesize a new conclusion. Cross-document AI results appear in
+   the project graph and source pages; the insight categories remain seeded demo content.
 
 Findings can be dismissed and restored. Dismissals are persisted.
 
@@ -164,7 +166,7 @@ The palette footer and empty state describe that scope. The API searches only ob
 
 - Appearance: persistent light/dark mode.
 - Graph: labels, suggested-link highlighting and reduced motion.
-- Analysis: clearly shows that source analysis is not connected.
+- Analysis: shows whether AI analysis is connected and explains the session-only result storage.
 - Backend connection: shows local vs remote mode, API base URL and whether source requests are sent.
 - Project: rename or delete the active project.
 - Relationship taxonomy reference.
@@ -176,9 +178,9 @@ graph, which continued to show all links at every value.
 
 ## Backend integration seam
 
-The repository contains the Phase 0–2 backend: Hono on Node.js with in-memory sessions,
-session-scoped project CRUD/cascade deletion, and PDF/TXT/Markdown upload with text extraction.
-There is still no authentication, database, permanent storage or AI analysis.
+The repository contains the Phase 0–3 backend: Hono on Node.js with in-memory sessions,
+session-scoped project CRUD/cascade deletion, PDF/TXT/Markdown upload with text extraction, and
+cross-document AI analysis. There is still no authentication, database or permanent storage.
 
 Frontend configuration (copy `.env.example` to `.env`):
 
@@ -200,6 +202,9 @@ VITE_API_MODE=local                 # default: no network calls
   and recreates it if the backend session or project has expired. The mapping and remote source
   metadata live in `sessionStorage`, bound to the backend session; local mode is untouched and
   remains network-free.
+- In remote mode, **Analyze project** starts one asynchronous analysis over every source in the
+  project. The browser polls the project status and then reloads the session-scoped graph. AI
+  concepts, connections and evidence are never written to IndexedDB.
 - On the first protected request, the client calls `POST /session`, stores the returned session ID
   in `sessionStorage`, and attaches it as `X-Session-ID`. Concurrent initialization calls share one
   bootstrap request, and reloads reuse the stored ID. If a stored session gets a `401`, the client
@@ -218,6 +223,11 @@ SESSION_SWEEP_MS=300000      # reap expired sessions every 5 minutes
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 UPLOAD_MAX_BYTES=10485760    # 10 MiB per file or pasted document
 PDF_MAX_PAGES=200
+GEMINI_API_KEY=              # server-only; analysis is disabled while empty
+GEMINI_MODEL=gemini-2.5-flash
+AI_TIMEOUT_MS=45000
+AI_MAX_DOCUMENT_CHARS=12000
+AI_MAX_TOTAL_CHARS=60000
 ```
 
 Expired sessions are rejected on access as well as by the periodic sweep. All state is in memory
@@ -236,16 +246,28 @@ Expected contract (relative to the base URL):
 | `DELETE` | `/projects/:id` | Delete a project and its derived data |
 | `GET` | `/projects/:id/graph` | Concepts and connections |
 | `GET` | `/projects/:id/insights` | Generated insights |
+| `POST` | `/projects/:id/analysis` | Start cross-document analysis (202) |
+| `GET` | `/projects/:id/analysis` | Poll project analysis status |
 | `GET` | `/projects/:id/sources` | List sources |
 | `POST` | `/projects/:id/sources` | Multipart upload (`file`, `content`, `title`) |
 | `GET` | `/projects/:id/sources/:sourceId` | Source metadata/content |
 | `DELETE` | `/projects/:id/sources/:sourceId` | Delete a source |
-| `POST` | `/projects/:id/sources/:sourceId/analyze` | Queue analysis |
-| `GET` | `/projects/:id/sources/:sourceId/analysis` | Poll analysis status |
 
-Project CRUD, cascade deletion, and source upload/list/detail/delete are implemented. Uploads
-accept multipart `file`, `content` and `title`. Graph, insight and analysis endpoints remain part
-of the future contract and are not implemented yet.
+Project CRUD, cascade deletion, source upload/list/detail/delete, graph reads and project analysis
+are implemented. Uploads accept multipart `file`, `content` and `title`. Analysis runs only when
+`GEMINI_API_KEY` is set; if it is missing, the endpoint returns a clear 503 and sources remain
+usable.
+
+The AI provider is deliberately modular. `server/src/services/ai/gemini.ts` owns transport and
+`server/src/services/ai/validate.ts` validates the model output before anything is stored. A new
+provider only needs to implement the `AiProvider` interface and be passed into `createApp`.
+
+Analysis output is validated strictly: every concept and connection must carry an exact evidence
+excerpt found in one of the project documents. Concepts are deduplicated by normalized label and
+receive stable project-scoped IDs. Connections are labelled **direct evidence**, **reasonable
+inference** (at least two pieces of evidence), or **speculative** (confidence capped, marked as
+suggested). Invalid, unsupported or ungrounded output fails the analysis without changing the
+previous graph.
 
 ## Project structure
 
@@ -259,6 +281,7 @@ src/
 │  ├─ insights/     InsightCard (expandable discovery)
 │  ├─ projects/     NewProjectModal, ProjectActions
 │  ├─ sources/      SourceIntake (drag/drop, upload, paste)
+│  │                ProjectAnalysis (status + trigger)
 │  ├─ search/       SearchOverlay (⌘K palette)
 │  ├─ ui/           Badge, Progress/Meter, Switch, PageHeader, Dialog, …
 │  └─ icons/        Icon set + brand mark
@@ -267,6 +290,7 @@ src/
 │  └─ clone.ts      Copies only the demo sources into a new project
 ├─ lib/
 │  ├─ persistence.ts       IndexedDB snapshot/file storage + fallback + validation
+│  ├─ remoteGraph.ts       Merge/strip session-scoped analysis results
 │  ├─ workspaceState.ts    Pure tested cascade/rename helpers
 │  ├─ search.ts            Pure cross-object search helper
 │  ├─ insightCategories.ts Category config + Broader Insights digest
@@ -295,6 +319,8 @@ server/
 │  ├─ middleware/session.ts  X-Session-ID validation and expiry checks
 │  ├─ routes/projects.ts     Project CRUD and cascade deletion
 │  ├─ routes/sources.ts      Upload, extraction, retrieval and source cleanup
+│  ├─ routes/analysis.ts    Project analysis jobs, status, graph and insights
+│  ├─ services/ai/          Provider interface, Gemini transport, prompt and validation
 │  ├─ services/textExtraction.ts  PDF/TXT/Markdown normalization and extraction
 │  ├─ services/sessionStore.ts  In-memory TTL session store
 │  └─ types.ts               Backend domain and session types
@@ -314,7 +340,9 @@ Workspace → documentIds[]              // scope boundary
 KnowledgeDocument → conceptIds[], status ('extracted' | 'queued'),
                     content?, fileKey?, remoteProjectId?, fileName?, mimeType?, fileSize?
 Concept → clusterId, documentIds[], mentions
-Connection → from, to, type, confidence, strength, explanation
+Concept → evidence[] (documentId, exact excerpt)
+Connection → from, to, type, confidence, strength, explanation,
+             evidenceLevel ('direct' | 'inference' | 'speculative'), evidence[]
 Insight → kind ('bridge' | 'gap' | 'tension' | 'pattern'), confidence, edgeId?
 ```
 
@@ -324,11 +352,13 @@ aggregation independent of React and covered by tests.
 
 ## Scope and limitations
 
-- The UI is local-first. The Sources screen uses backend uploads in remote mode; graph, insights and
-  settings still read the local snapshot.
-- No authentication, user accounts, server database, permanent storage or AI analysis.
-- Only the bundled sample corpus has concepts and insights. Uploaded sources have extracted text but
-  no automatic analysis yet, so their concept and connection lists stay empty.
+- The UI is local-first. The Sources screen uses backend uploads and AI analysis in remote mode;
+  graph, insights and settings still read the local snapshot plus the session-scoped remote graph.
+- No authentication, user accounts, server database or permanent storage.
+- AI analysis requires remote mode, a configured `GEMINI_API_KEY`, and internet access from the
+  backend. Local mode intentionally stays network-free and marks new sources as waiting.
+- Only the bundled sample corpus has seeded insights. AI analysis produces concepts and
+  connections with evidence; it does not yet generate the Phase 4 insight interface.
 - Local mode still stores PDFs without parsing them. PDF extraction is available only in remote mode.
 - Remote source content, metadata and mappings are kept only for the current browser and backend
   session. They are never written to IndexedDB. After a reload, opening the source fetches its text

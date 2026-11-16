@@ -26,6 +26,29 @@ export type DocumentKind = 'pdf' | 'markdown' | 'notes' | 'web';
 
 export type DocumentStatus = 'extracted' | 'queued';
 
+export type EvidenceLevel = 'direct' | 'inference' | 'speculative';
+
+export interface EvidenceReference {
+  documentId: string;
+  excerpt: string;
+  note?: string;
+}
+
+export type ProjectAnalysisRunStatus = 'idle' | 'running' | 'complete' | 'failed' | 'stale';
+
+export interface ProjectAnalysisStatus {
+  projectId: string;
+  status: ProjectAnalysisRunStatus;
+  documentCount: number;
+  conceptCount: number;
+  connectionCount: number;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  error?: string;
+  model?: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;
@@ -53,6 +76,8 @@ export interface Concept {
   documentIds: string[];
   /** How often the concept appears across the corpus. */
   mentions: number;
+  /** Supporting passages for AI-extracted concepts. */
+  evidence?: EvidenceReference[];
 }
 
 export interface KnowledgeDocument {
@@ -108,6 +133,8 @@ export interface Connection {
   isBridge: boolean;
   /** Surfaced by the discovery engine but not yet confirmed by the user. */
   suggested?: boolean;
+  evidenceLevel?: EvidenceLevel;
+  evidence?: EvidenceReference[];
 }
 
 export type InsightKind = 'bridge' | 'gap' | 'tension' | 'pattern';

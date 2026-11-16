@@ -3,6 +3,7 @@ import type {
   Connection,
   Insight,
   KnowledgeDocument,
+  ProjectAnalysisStatus,
   Workspace,
 } from '../types';
 
@@ -301,5 +302,12 @@ export const api = {
       }),
     analysis: (projectId: string, sourceId: string) =>
       request<SourceAnalysis>(`/projects/${projectId}/sources/${sourceId}/analysis`),
+  },
+
+  analysis: {
+    status: (projectId: string) =>
+      request<ProjectAnalysisStatus>(`/projects/${projectId}/analysis`),
+    start: (projectId: string) =>
+      request<ProjectAnalysisStatus>(`/projects/${projectId}/analysis`, { method: 'POST' }),
   },
 };

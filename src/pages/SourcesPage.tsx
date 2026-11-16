@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { DocumentCard } from '../components/documents/DocumentCard';
 import { SourceIntake } from '../components/sources/SourceIntake';
+import { ProjectAnalysis } from '../components/sources/ProjectAnalysis';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Badge } from '../components/ui/Badge';
 import { Icon } from '../components/icons';
@@ -57,6 +58,8 @@ export function SourcesPage() {
         }
         actions={queued > 0 ? <Badge tone="amber">{queued} waiting for analysis</Badge> : undefined}
       />
+
+      <ProjectAnalysis />
 
       <SourceIntake />
 

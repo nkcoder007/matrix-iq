@@ -4,11 +4,9 @@ import type { Env } from '../app';
 import type {
   Workspace,
   KnowledgeDocument,
-  Concept,
-  Connection,
-  Insight,
   SessionData,
 } from '../types';
+import { pruneAnalysisForRemovedDocuments } from '../services/analysisCleanup';
 
 const projects = new Hono<Env>();
 
@@ -129,35 +127,8 @@ function cascadeDeleteProject(session: SessionData, workspace: Workspace): void 
   session.documents = session.documents.filter(
     (doc: KnowledgeDocument) => doc.workspaceId !== workspace.id,
   );
-
-  const removedConceptIds = new Set<string>();
-  session.concepts = session.concepts.filter((concept: Concept) => {
-    const hasExternalDoc = concept.documentIds.some((docId) => !documentIds.has(docId));
-    if (!hasExternalDoc) {
-      removedConceptIds.add(concept.id);
-      return false;
-    }
-    concept.documentIds = concept.documentIds.filter((docId) => !documentIds.has(docId));
-    return true;
-  });
-
-  session.connections = session.connections.filter(
-    (conn: Connection) =>
-      !removedConceptIds.has(conn.from) && !removedConceptIds.has(conn.to),
-  );
-
-  session.insights = session.insights.filter(
-    (insight: Insight) =>
-      !insight.conceptIds.some((cid) => removedConceptIds.has(cid)),
-  );
-
-  session.dismissedIds = session.dismissedIds.filter(
-    (iid: string) => session.insights.some((i: Insight) => i.id === iid),
-  );
-
-  session.savedConnectionIds = session.savedConnectionIds.filter(
-    (cid: string) => session.connections.some((c: Connection) => c.id === cid),
-  );
+  pruneAnalysisForRemovedDocuments(session, documentIds);
+  session.projectAnalysis.delete(workspace.id);
 
   for (const docId of documentIds) {
     session.analysisStatus.delete(docId);

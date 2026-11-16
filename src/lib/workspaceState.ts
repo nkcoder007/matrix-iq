@@ -18,7 +18,13 @@ export function removeDocumentFromState(
       removedConceptIds.add(concept.id);
       return [];
     }
-    return [{ ...concept, documentIds }];
+    if (!concept.evidence) return [{ ...concept, documentIds }];
+    const evidence = concept.evidence.filter((entry) => entry.documentId !== documentId);
+    if (evidence.length === 0) {
+      removedConceptIds.add(concept.id);
+      return [];
+    }
+    return [{ ...concept, documentIds, evidence, mentions: evidence.length }];
   });
 
   return {
@@ -29,10 +35,16 @@ export function removeDocumentFromState(
     })),
     documents: state.documents.filter((document) => document.id !== documentId),
     concepts,
-    connections: state.connections.filter(
-      (connection) =>
-        !removedConceptIds.has(connection.from) && !removedConceptIds.has(connection.to),
-    ),
+    connections: state.connections.flatMap((connection) => {
+      if (removedConceptIds.has(connection.from) || removedConceptIds.has(connection.to)) {
+        return [];
+      }
+      if (!connection.evidence) return [connection];
+      const evidence = connection.evidence.filter(
+        (entry) => entry.documentId !== documentId,
+      );
+      return evidence.length > 0 ? [{ ...connection, evidence }] : [];
+    }),
     insights: state.insights.filter(
       (insight) => !insight.conceptIds.some((conceptId) => removedConceptIds.has(conceptId)),
     ),

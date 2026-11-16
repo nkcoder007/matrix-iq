@@ -246,7 +246,7 @@ export function AboutPage() {
           <Icon name="info" size={14} />
           <span>
             {backendConfig.configured
-              ? 'Local projects and preferences stay in this browser. Uploaded sources are sent only to the temporary backend session.'
+              ? 'Local projects and preferences stay in this browser. Uploaded sources are sent only to the temporary backend session; cross-document analysis runs on the server with a validated AI response.'
               : 'This build saves projects, sources and discoveries in this browser, along with your appearance preference. Nothing is sent to a server.'}
           </span>
         </footer>

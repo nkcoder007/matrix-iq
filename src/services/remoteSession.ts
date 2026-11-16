@@ -96,6 +96,20 @@ export function getRemoteProject(localProjectId: string): string | undefined {
   return readState()?.projects[localProjectId];
 }
 
+export interface RemoteProjectEntry {
+  localProjectId: string;
+  remoteProjectId: string;
+}
+
+export function remoteProjectEntries(): RemoteProjectEntry[] {
+  const state = readState();
+  if (!state) return [];
+  return Object.entries(state.projects).map(([localProjectId, remoteProjectId]) => ({
+    localProjectId,
+    remoteProjectId,
+  }));
+}
+
 export function localProjectIdForRemoteProject(remoteProjectId: string): string | undefined {
   const state = readState();
   if (!state) return undefined;

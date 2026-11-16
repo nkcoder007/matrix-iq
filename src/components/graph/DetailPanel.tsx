@@ -7,6 +7,7 @@ import { ConceptTag } from '../ui/ConceptTag';
 import { Meter } from '../ui/Progress';
 import { DocumentRow } from '../documents/DocumentRow';
 import { formatPercent } from '../../lib/format';
+import { EVIDENCE_LEVELS } from '../../lib/evidence';
 import { projectPath } from '../../lib/paths';
 
 interface DetailPanelProps {
@@ -31,6 +32,7 @@ export function DetailPanel({
     conceptById,
     connections,
     connectionsForConcept,
+    documentById,
     documentsForConcept,
     savedConnectionIds,
     toggleSavedConnection,
@@ -48,9 +50,10 @@ export function DetailPanel({
   const edgeMeta = edge ? RELATION_TYPES[edge.type] : null;
 
   const crossesDocuments = Boolean(
-    edgeFrom &&
-      edgeTo &&
-      edgeFrom.documentIds.every((documentId) => !edgeTo.documentIds.includes(documentId)),
+    edge?.isBridge ||
+      (edgeFrom &&
+        edgeTo &&
+        edgeFrom.documentIds.every((documentId) => !edgeTo.documentIds.includes(documentId))),
   );
 
   const edgeSources = edge
@@ -64,12 +67,17 @@ export function DetailPanel({
     ? [...connectionsForConcept(node.id)].sort((a, b) => b.confidence - a.confidence)
     : [];
   const nodeDocumentId = nodeSources[0]?.id;
+  const edgeEvidence = edge?.evidence ?? [];
+  const nodeEvidence = node?.evidence ?? [];
 
   const crossDocumentConnections = connections.filter((item) => {
     const a = conceptById.get(item.from);
     const b = conceptById.get(item.to);
     if (!a || !b) return false;
-    return a.documentIds.every((documentId) => !b.documentIds.includes(documentId));
+    return (
+      item.isBridge ||
+      a.documentIds.every((documentId) => !b.documentIds.includes(documentId))
+    );
   });
 
   const bridgePool = crossDocumentConnections.length > 0 ? crossDocumentConnections : connections;
@@ -94,6 +102,11 @@ export function DetailPanel({
           <div className="detail__section">
             <div className="detail__badges">
               <RelationBadge type={edge.type} />
+              {edge.evidenceLevel ? (
+                <Badge tone={EVIDENCE_LEVELS[edge.evidenceLevel].tone}>
+                  {EVIDENCE_LEVELS[edge.evidenceLevel].label}
+                </Badge>
+              ) : null}
               {crossesDocuments ? <Badge tone="violet">Across sources</Badge> : null}
               {edge.suggested ? <Badge tone="mint">Suggested</Badge> : null}
             </div>
@@ -161,6 +174,29 @@ export function DetailPanel({
               <p className="eyebrow">Why these are connected</p>
               <p className="detail__prose">{edge.explanation}</p>
             </div>
+
+            {edgeEvidence.length > 0 ? (
+              <div className="detail__block">
+                <p className="eyebrow">Evidence</p>
+                <ul className="evidence-list">
+                  {edgeEvidence.map((item, index) => {
+                    const source = documentById.get(item.documentId);
+                    return (
+                      <li key={`${item.documentId}-${index}`} className="evidence-item">
+                        <blockquote className="evidence-quote">{item.excerpt}</blockquote>
+                        <Link
+                          to={projectPath(workspace.id, `sources/${item.documentId}`)}
+                          className="evidence-source"
+                        >
+                          {source?.title ?? 'Source document'}
+                        </Link>
+                        {item.note ? <p className="evidence-note">{item.note}</p> : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="detail__block">
               <p className="eyebrow">Sources for this connection</p>
@@ -236,6 +272,28 @@ export function DetailPanel({
                 ))}
               </div>
             </div>
+
+            {nodeEvidence.length > 0 ? (
+              <div className="detail__block">
+                <p className="eyebrow">Evidence</p>
+                <ul className="evidence-list">
+                  {nodeEvidence.map((item, index) => {
+                    const source = documentById.get(item.documentId);
+                    return (
+                      <li key={`${item.documentId}-${index}`} className="evidence-item">
+                        <blockquote className="evidence-quote">{item.excerpt}</blockquote>
+                        <Link
+                          to={projectPath(workspace.id, `sources/${item.documentId}`)}
+                          className="evidence-source"
+                        >
+                          {source?.title ?? 'Source document'}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
 
             <div className="detail__block">
               <p className="eyebrow">Connected ideas</p>

@@ -109,7 +109,7 @@ export function SettingsPage() {
           <dl className="detail-pairs">
             <div>
               <dt>Source analysis</dt>
-              <dd>Not connected</dd>
+              <dd>{backendConfig.configured ? 'Gemini via the backend' : 'Not connected'}</dd>
             </div>
             <div>
               <dt>Saved source text</dt>
@@ -125,8 +125,8 @@ export function SettingsPage() {
             <Icon name="info" size={15} />
             <p>
               {backendConfig.configured
-                ? 'New sources are extracted in the temporary backend session and their metadata is cleared when that session ends. Generated ideas, connections and insights will appear only when the future analysis service is connected.'
-                : 'New sources keep their original text or file locally and stay queued. Generated ideas, connections and insights will appear only when the future analysis service is connected.'}
+                ? 'New sources are extracted in the temporary backend session. Cross-document analysis runs on the server, validates the AI response, and keeps concepts, connections and evidence in the same temporary session. The API key never reaches this browser.'
+                : 'New sources keep their original text or file locally and stay queued. Local mode does not run AI analysis; use remote mode with a configured server provider to extract concepts and connections.'}
             </p>
           </div>
         </section>
@@ -148,7 +148,11 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Requests sent</dt>
-              <dd>{backendConfig.configured ? 'Source uploads and project setup' : 'None in local mode'}</dd>
+              <dd>
+                {backendConfig.configured
+                  ? 'Source uploads, project setup and AI analysis'
+                  : 'None in local mode'}
+              </dd>
             </div>
           </dl>
 
@@ -272,8 +276,8 @@ export function SettingsPage() {
             <Icon name="info" size={15} />
             <p>
               {backendConfig.configured
-                ? 'Local projects, preferences, dismissals and saved links survive reloads. Remote sources survive reloads only while the backend session is active. Accounts and document analysis are not connected yet.'
-                : 'Projects, sources, dismissals and saved links survive reloads in this browser. Accounts, server sync and document analysis are not connected yet.'}
+                ? 'Local projects, preferences, dismissals and saved links survive reloads. Remote sources and AI results survive reloads only while the backend session is active. Accounts are not connected yet.'
+                : 'Projects, sources, dismissals and saved links survive reloads in this browser. Accounts and server sync are not connected yet; local mode does not run AI analysis.'}
             </p>
           </div>
         </section>

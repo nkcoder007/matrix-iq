@@ -301,8 +301,8 @@ export function SourceIntake() {
 
       <p className="intake__note">
         {backendConfig.configured
-          ? 'Files and pasted text are sent to the backend, which extracts readable text and keeps the originals in memory for this browser session. Automatic analysis is not connected yet.'
-          : 'Original text and files are stored in this browser. Automatic analysis needs the future backend, so new sources stay marked “waiting for analysis” until then.'}
+          ? 'Files and pasted text are sent to the backend, which extracts readable text and keeps the originals in memory for this browser session. Use Analyze project above to run cross-document analysis.'
+          : 'Original text and files are stored in this browser. Local mode stays network-free and does not run AI analysis, so new sources stay marked “waiting for analysis”.'}
       </p>
     </section>
   );

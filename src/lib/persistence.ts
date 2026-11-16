@@ -1,4 +1,5 @@
 import type { GraphPreferences, KnowledgeState } from '../types';
+import { stripRemoteAnalysis } from './remoteGraph';
 
 const DB_NAME = 'matrixiq-local';
 const DB_VERSION = 1;
@@ -30,12 +31,14 @@ export function withoutRemoteSources(snapshot: PersistedSnapshot): PersistedSnap
   );
   if (remoteIds.size === 0) return snapshot;
 
+  const stripped = stripRemoteAnalysis(snapshot.state, remoteIds);
+
   return {
     ...snapshot,
     state: {
-      ...snapshot.state,
-      documents: snapshot.state.documents.filter((document) => !remoteIds.has(document.id)),
-      workspaces: snapshot.state.workspaces.map((workspace) => ({
+      ...stripped,
+      documents: stripped.documents.filter((document) => !remoteIds.has(document.id)),
+      workspaces: stripped.workspaces.map((workspace) => ({
         ...workspace,
         documentIds: workspace.documentIds.filter((id) => !remoteIds.has(id)),
       })),

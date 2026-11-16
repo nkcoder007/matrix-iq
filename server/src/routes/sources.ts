@@ -8,11 +8,9 @@ import {
   extractTextFromFile,
   normalizeExtractedText,
 } from '../services/textExtraction';
+import { pruneAnalysisForRemovedDocuments } from '../services/analysisCleanup';
 import type {
-  Concept,
-  Connection,
   DocumentKind,
-  Insight,
   KnowledgeDocument,
   SessionData,
   Workspace,
@@ -210,31 +208,7 @@ function removeSource(
 ): void {
   session.documents = session.documents.filter((item) => item.id !== document.id);
   workspace.documentIds = workspace.documentIds.filter((id) => id !== document.id);
-
-  const removedConceptIds = new Set<string>();
-  session.concepts = session.concepts.filter((concept: Concept) => {
-    const hasOtherDocument = concept.documentIds.some((id) => id !== document.id);
-    if (!hasOtherDocument) {
-      removedConceptIds.add(concept.id);
-      return false;
-    }
-    concept.documentIds = concept.documentIds.filter((id) => id !== document.id);
-    return true;
-  });
-
-  session.connections = session.connections.filter(
-    (connection: Connection) =>
-      !removedConceptIds.has(connection.from) && !removedConceptIds.has(connection.to),
-  );
-  session.insights = session.insights.filter(
-    (insight: Insight) => !insight.conceptIds.some((id) => removedConceptIds.has(id)),
-  );
-  session.dismissedIds = session.dismissedIds.filter((id) =>
-    session.insights.some((insight) => insight.id === id),
-  );
-  session.savedConnectionIds = session.savedConnectionIds.filter((id) =>
-    session.connections.some((connection) => connection.id === id),
-  );
+  pruneAnalysisForRemovedDocuments(session, new Set([document.id]));
 
   session.fileBuffers.delete(document.id);
   session.analysisStatus.delete(document.id);
@@ -378,7 +352,7 @@ export function createSourcesRoute(config: UploadConfig) {
       words: extracted.words,
       pages: extracted.pages,
       excerpt: excerptOf(extracted.text),
-      summary: 'Text extracted successfully. No analysis or insights have been generated yet.',
+      summary: 'Text extracted successfully. Run cross-document analysis to find ideas and connections.',
       conceptIds: [],
       content: extracted.text,
       fileName: metadata.fileName,
