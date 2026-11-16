@@ -1,8 +1,9 @@
-import type { Concept, Connection, KnowledgeState } from '../types';
+import type { Concept, Connection, Insight, KnowledgeState } from '../types';
 
 export interface RemoteGraph {
   concepts: Concept[];
   connections: Connection[];
+  insights?: Insight[];
 }
 
 function remoteDocumentIdsForProject(state: KnowledgeState, remoteProjectId: string): Set<string> {
@@ -76,6 +77,30 @@ export function mergeRemoteGraph(
       conceptIds.has(connection.to) &&
       (connection.evidence ?? []).some((entry) => remoteDocumentIds.has(entry.documentId)),
   );
+  const allConnections = [
+    ...stripped.connections,
+    ...incomingConnections.filter(
+      (connection) => !stripped.connections.some((edge) => edge.id === connection.id),
+    ),
+  ];
+  const connectionIds = new Set(allConnections.map((connection) => connection.id));
+  const incomingInsights = (graph.insights ?? []).flatMap((insight) => {
+    const { edgeId, ...insightFields } = insight;
+    const matchedConceptIds = insight.conceptIds.filter((id) => conceptIds.has(id));
+    if (matchedConceptIds.length === 0) return [];
+    const evidence = insight.evidence?.filter((entry) =>
+      remoteDocumentIds.has(entry.documentId),
+    );
+    if (insight.evidence && (!evidence || evidence.length === 0)) return [];
+    return [
+      {
+        ...insightFields,
+        conceptIds: matchedConceptIds,
+        ...(evidence ? { evidence } : {}),
+        ...(edgeId && connectionIds.has(edgeId) ? { edgeId } : {}),
+      },
+    ];
+  });
 
   const incomingByDocument = new Map<string, string[]>();
   for (const concept of incomingConcepts) {
@@ -90,10 +115,11 @@ export function mergeRemoteGraph(
   return {
     ...stripped,
     concepts: allConcepts,
-    connections: [
-      ...stripped.connections,
-      ...incomingConnections.filter(
-        (connection) => !stripped.connections.some((edge) => edge.id === connection.id),
+    connections: allConnections,
+    insights: [
+      ...stripped.insights,
+      ...incomingInsights.filter(
+        (insight) => !stripped.insights.some((existing) => existing.id === insight.id),
       ),
     ],
     documents: stripped.documents.map((document) =>

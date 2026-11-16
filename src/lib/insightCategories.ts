@@ -73,7 +73,7 @@ export const INSIGHT_CATEGORIES: InsightCategory[] = [
     color: '#b45309',
     blurb: 'The strongest single finding from each category, gathered into one digest.',
     detail:
-      'A cross-category digest, not new synthesis: the highest-confidence finding from each category, gathered in one place. AI-extracted concepts and connections appear in the project graph; generated insight categories are not part of this phase.',
+      'A cross-category digest, not new synthesis: the highest-confidence finding from each category, gathered in one place. Every finding comes from the analysed sources and keeps its evidence.',
     empty: 'There are no findings to gather into a digest yet.',
   },
 ];

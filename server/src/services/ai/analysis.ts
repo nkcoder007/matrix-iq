@@ -20,6 +20,19 @@ Evidence rules:
 - For conceptual similarities, prefer "similar" or "related" over causal relationship types.
 - A connection supported by more than one document is stronger evidence for a cross-document link.
 
+Insight rules:
+- Generate approximately 3 to 5 useful insights from the combined document set.
+- Prioritize unexpected cross-document connections, recurring patterns, supported tensions, and
+  broader explanations that help the reader understand the collection as a whole.
+- A bridge must connect concepts from at least two documents. A pattern must recur in at least two
+  documents. A tension must be explicitly supported by the excerpts; do not infer disagreement from
+  silence. A gap must be stated or clearly implied by the supplied documents.
+- Omit a category when the documents do not support it. Do not invent an insight to fill a category.
+- Each insight must cite exact evidence excerpts. Never present a speculative insight as fact.
+- "summary" is the concise user-facing explanation. "rationale" explains the reasoning and limits.
+- Use only concept labels that appear in the "concepts" list. If an insight is about a connection,
+  include that connection's exact labels and type in "connection".
+
 Return only valid JSON matching this shape:
 {
   "concepts": [
@@ -46,11 +59,31 @@ Return only valid JSON matching this shape:
         { "documentId": "exact document id", "excerpt": "exact text copied from that document" }
       ]
     }
+  ],
+  "insights": [
+    {
+      "kind": "bridge|pattern|tension|gap",
+      "title": "short descriptive title",
+      "summary": "one or two sentence explanation for the reader",
+      "rationale": "why the evidence supports this insight and what its limits are",
+      "conceptLabels": ["concept label"],
+      "connection": {
+        "from": "concept label",
+        "to": "concept label",
+        "type": "related|causes|leads|partOf|similar|opposes|depends|influences"
+      },
+      "evidenceLevel": "direct|inference|speculative",
+      "confidence": 0.0,
+      "evidence": [
+        { "documentId": "exact document id", "excerpt": "exact text copied from that document" }
+      ]
+    }
   ]
 }
 
 Choose the closest clusterId from the allowed list. Use evidence only from the documentId where
-the excerpt appears. Return between 3 and 20 concepts and at most 30 connections.`;
+the excerpt appears. Return between 3 and 20 concepts, at most 30 connections, and 3 to 5
+well-supported insights.`;
 
 function clipDocumentText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;

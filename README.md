@@ -136,8 +136,13 @@ The five categories are:
 3. **Tensions & Contradictions** — where sources disagree or pull against each other.
 4. **Gaps & Open Questions** — threads your sources leave unfinished.
 5. **Broader Insights** — a cross-category digest containing the strongest single finding from each
-   category. It does not claim to synthesize a new conclusion. Cross-document AI results appear in
-   the project graph and source pages; the insight categories remain seeded demo content.
+   category. It does not claim to synthesize a new conclusion.
+
+Remote-mode analysis asks the provider for approximately three to five findings alongside concepts
+and connections, in the same Gemini call. Insights are grouped into the categories above and must
+cite exact evidence excerpts. A bridge or recurring pattern needs evidence from at least two
+documents; unsupported categories are omitted rather than filled with generic observations. Local
+mode keeps its seeded insights and makes no AI calls.
 
 Findings can be dismissed and restored. Dismissals are persisted.
 
@@ -178,7 +183,7 @@ graph, which continued to show all links at every value.
 
 ## Backend integration seam
 
-The repository contains the Phase 0–3 backend: Hono on Node.js with in-memory sessions,
+The repository contains the Phase 0–4 backend: Hono on Node.js with in-memory sessions,
 session-scoped project CRUD/cascade deletion, PDF/TXT/Markdown upload with text extraction, and
 cross-document AI analysis. There is still no authentication, database or permanent storage.
 
@@ -203,15 +208,15 @@ VITE_API_MODE=local                 # default: no network calls
   metadata live in `sessionStorage`, bound to the backend session; local mode is untouched and
   remains network-free.
 - In remote mode, **Analyze project** starts one asynchronous analysis over every source in the
-  project. The browser polls the project status and then reloads the session-scoped graph. AI
-  concepts, connections and evidence are never written to IndexedDB.
+  project. The browser polls the project status and then reloads the session-scoped graph and
+  insights. AI concepts, connections, insights and evidence are never written to IndexedDB.
 - On the first protected request, the client calls `POST /session`, stores the returned session ID
   in `sessionStorage`, and attaches it as `X-Session-ID`. Concurrent initialization calls share one
   bootstrap request, and reloads reuse the stored ID. If a stored session gets a `401`, the client
   removes it, bootstraps a replacement, and retries the original request once; a second `401` is
   returned to the caller without looping. `POST /session` and `GET /health` require no session.
-- Other screens (graph, insights, settings) still read the local snapshot. The demo corpus remains
-  available offline in local mode.
+- Graph and Insights read the remote project when remote mode is configured; Settings and the
+  offline demo remain local. Local mode remains network-free.
 - Authentication is not implemented. The session ID is an anonymous in-memory scope, not a login.
 
 Backend configuration (copy `server/.env.example` to `server/.env`):
@@ -262,12 +267,12 @@ The AI provider is deliberately modular. `server/src/services/ai/gemini.ts` owns
 `server/src/services/ai/validate.ts` validates the model output before anything is stored. A new
 provider only needs to implement the `AiProvider` interface and be passed into `createApp`.
 
-Analysis output is validated strictly: every concept and connection must carry an exact evidence
-excerpt found in one of the project documents. Concepts are deduplicated by normalized label and
-receive stable project-scoped IDs. Connections are labelled **direct evidence**, **reasonable
-inference** (at least two pieces of evidence), or **speculative** (confidence capped, marked as
-suggested). Invalid, unsupported or ungrounded output fails the analysis without changing the
-previous graph.
+Analysis output is validated strictly: every concept, connection and insight must carry an exact
+evidence excerpt found in one of the project documents. Concepts are deduplicated by normalized
+label and receive stable project-scoped IDs. Connections and insights are labelled **direct
+evidence**, **reasonable inference** (at least two pieces of evidence), or **speculative**
+(confidence capped; connections marked as suggested). Invalid, unsupported or ungrounded output
+fails the analysis without changing the previous graph.
 
 ## Project structure
 

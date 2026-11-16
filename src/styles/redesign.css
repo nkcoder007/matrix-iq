@@ -1199,6 +1199,16 @@
   color: var(--text-2);
 }
 
+.discovery__evidence-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
 .discovery__edge {
   display: grid;
   gap: 7px;

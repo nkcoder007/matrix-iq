@@ -140,6 +140,34 @@ function validResponse() {
         ],
       },
     ],
+    insights: [
+      {
+        kind: 'pattern',
+        title: 'Local rules recur across ants and nodes',
+        summary:
+          'Both documents describe coordination emerging from small local decisions instead of a central controller.',
+        rationale:
+          'The ant and node passages independently describe local signals producing collective behaviour. The shared language supports a recurring pattern, but the documents do not establish a common cause.',
+        conceptLabels: ['Decentralised coordination', 'Local optimisation'],
+        connection: {
+          from: 'Decentralised coordination',
+          to: 'Local optimisation',
+          type: 'similar',
+        },
+        evidenceLevel: 'inference',
+        confidence: 0.66,
+        evidence: [
+          {
+            documentId: 'doc-ants',
+            excerpt: 'Ants coordinate without a central controller.',
+          },
+          {
+            documentId: 'doc-nodes',
+            excerpt: 'Optimisation happens through small local decisions.',
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -249,6 +277,7 @@ describe('Phase 3 — AI analysis', () => {
       documentCount: 2,
       conceptCount: 2,
       connectionCount: 1,
+      insightCount: 1,
       model: 'fake-model',
     });
 
@@ -280,6 +309,28 @@ describe('Phase 3 — AI analysis', () => {
       isBridge: true,
     });
     expect(body.connections[0]?.evidence).toHaveLength(2);
+
+    const insights = await request(app, 'GET', `/projects/${PROJECT_A}/insights`);
+    const insightBody = insights.json as {
+      insights: Array<{
+        kind: string;
+        title: string;
+        conceptIds: string[];
+        edgeId?: string;
+        evidenceLevel: string;
+        evidence: Array<{ documentId: string; excerpt: string }>;
+      }>;
+    };
+    expect(insights.status).toBe(200);
+    expect(insightBody.insights).toHaveLength(1);
+    expect(insightBody.insights[0]).toMatchObject({
+      kind: 'pattern',
+      title: 'Local rules recur across ants and nodes',
+      evidenceLevel: 'inference',
+    });
+    expect(insightBody.insights[0]?.conceptIds).toHaveLength(2);
+    expect(insightBody.insights[0]?.edgeId).toBe(body.connections[0]?.id);
+    expect(insightBody.insights[0]?.evidence).toHaveLength(2);
 
     const session = store.get(SID_A)!;
     expect(session.documents.every((item) => item.conceptIds.length > 0)).toBe(true);

@@ -21,17 +21,18 @@ export function ProjectAnalysis() {
   const count = analysisStatus?.documentCount ?? remoteDocuments.length;
   const conceptCount = analysisStatus?.conceptCount ?? 0;
   const connectionCount = analysisStatus?.connectionCount ?? 0;
+  const insightCount = analysisStatus?.insightCount ?? 0;
 
   const summary =
     status === 'complete'
-      ? `${conceptCount} ${conceptCount === 1 ? 'idea' : 'ideas'} and ${connectionCount} ${connectionCount === 1 ? 'connection' : 'connections'} found across ${count} ${count === 1 ? 'source' : 'sources'}.`
+      ? `${conceptCount} ${conceptCount === 1 ? 'idea' : 'ideas'}, ${connectionCount} ${connectionCount === 1 ? 'connection' : 'connections'} and ${insightCount} ${insightCount === 1 ? 'insight' : 'insights'} found across ${count} ${count === 1 ? 'source' : 'sources'}.`
       : status === 'running'
         ? `Reading ${count} ${count === 1 ? 'source' : 'sources'} together. This can take a moment.`
         : status === 'stale'
           ? 'Sources changed since the last analysis. Run it again to refresh the project graph.'
           : status === 'failed'
             ? 'The last analysis did not finish. Your sources are unchanged.'
-            : 'Analyze every source in this project together to find concepts and evidence-backed connections.';
+            : 'Analyze every source in this project together to find concepts, evidence-backed connections and insights.';
 
   return (
     <section className="analysis-card card" aria-labelledby="analysis-title">

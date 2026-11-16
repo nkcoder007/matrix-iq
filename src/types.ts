@@ -42,6 +42,7 @@ export interface ProjectAnalysisStatus {
   documentCount: number;
   conceptCount: number;
   connectionCount: number;
+  insightCount: number;
   startedAt?: string;
   completedAt?: string;
   updatedAt: string;
@@ -151,6 +152,9 @@ export interface Insight {
   confidence: number;
   edgeId?: string;
   createdAt: string;
+  evidenceLevel?: EvidenceLevel;
+  evidence?: EvidenceReference[];
+  documentIds?: string[];
 }
 
 export interface GraphPreferences {

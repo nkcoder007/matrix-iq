@@ -61,6 +61,7 @@ function toStatusResponse(
       documentCount: currentDocumentCount,
       conceptCount: 0,
       connectionCount: 0,
+      insightCount: 0,
       updatedAt: now(),
     };
   }
@@ -76,6 +77,7 @@ function toStatusResponse(
     documentCount: currentDocumentCount,
     conceptCount: record.conceptCount,
     connectionCount: record.connectionCount,
+    insightCount: record.insightCount,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     updatedAt: record.updatedAt,
@@ -131,9 +133,15 @@ function applyAnalysis(
     ...connection,
     sessionId: session.sessionId,
   }));
+  const insights: Insight[] = result.insights.map((insight) => ({
+    ...insight,
+    sessionId: session.sessionId,
+    createdAt: now(),
+  }));
 
   session.concepts.push(...concepts);
   session.connections.push(...connections);
+  session.insights.push(...insights);
 
   for (const document of projectDocuments(session, workspace)) {
     document.conceptIds = concepts
@@ -206,6 +214,7 @@ export function createAnalysisRoute(provider: AiProvider | null, config: AiConfi
       documentIds,
       conceptCount: 0,
       connectionCount: 0,
+      insightCount: 0,
       model: provider.model,
     };
     session.projectAnalysis.set(workspace.id, record);
@@ -230,6 +239,7 @@ export function createAnalysisRoute(provider: AiProvider | null, config: AiConfi
         record.updatedAt = record.completedAt;
         record.conceptCount = result.concepts.length;
         record.connectionCount = result.connections.length;
+        record.insightCount = result.insights.length;
         record.error = undefined;
       })
       .catch((error: unknown) => {

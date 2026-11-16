@@ -249,9 +249,13 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
           const graphs = await Promise.all(
             entries.map(async (entry) => {
               try {
+                const [graph, insights] = await Promise.all([
+                  api.projects.graph(entry.remoteProjectId),
+                  api.projects.insights(entry.remoteProjectId),
+                ]);
                 return {
                   entry,
-                  graph: await api.projects.graph(entry.remoteProjectId),
+                  graph: { ...graph, insights: insights.insights },
                 };
               } catch {
                 return null;
@@ -391,9 +395,14 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     async (localProjectId: string, remoteProjectId: string) => {
       if (getRemoteProject(localProjectId) !== remoteProjectId) return;
       try {
-        const graph = await api.projects.graph(remoteProjectId);
+        const [graph, insights] = await Promise.all([
+          api.projects.graph(remoteProjectId),
+          api.projects.insights(remoteProjectId),
+        ]);
         if (getRemoteProject(localProjectId) !== remoteProjectId) return;
-        setState((current) => mergeRemoteGraph(current, remoteProjectId, graph));
+        setState((current) =>
+          mergeRemoteGraph(current, remoteProjectId, { ...graph, insights: insights.insights }),
+        );
       } catch {
         // Source metadata remains visible if the temporary session disappeared.
       }

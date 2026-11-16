@@ -125,8 +125,7 @@ export function InsightsPage() {
       {category.id === 'broader-insights' && items.length > 0 ? (
         <p className="insight-detail__note">
           This is a digest, not a new synthesis: one highest-confidence finding from each category.
-          Cross-document AI results appear in the project graph; generated insight categories are
-          not part of this phase.
+          The findings are generated from the analysed sources and keep their evidence excerpts.
         </p>
       ) : null}
 
@@ -143,7 +142,7 @@ export function InsightsPage() {
             title={`No ${category.title.toLowerCase()} yet`}
             text={
               category.empty +
-              ' AI analysis produces concepts and connections on the Sources screen; these insight categories remain demo content for now.'
+              ' Run cross-document analysis on the Sources screen; only supported findings are shown.'
             }
             action={
               <Link

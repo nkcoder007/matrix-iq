@@ -7,6 +7,7 @@ import { Icon } from '../icons';
 import { useKnowledge } from '../../store/KnowledgeContext';
 import { projectPath } from '../../lib/paths';
 import { RELATION_TYPES } from '../../lib/relations';
+import { EVIDENCE_LEVELS } from '../../lib/evidence';
 
 const INSIGHT_META: Record<Insight['kind'], { label: string; tone: BadgeTone }> = {
   bridge: { label: 'Unexpected connection', tone: 'mint' },
@@ -32,10 +33,16 @@ export function InsightCard({ insight, onDismiss }: InsightCardProps) {
     : undefined;
   const from = edge ? conceptById.get(edge.from) : undefined;
   const to = edge ? conceptById.get(edge.to) : undefined;
+  const evidence = insight.evidence ?? [];
 
   const sourceIds = Array.from(
     new Set(
-      insight.conceptIds.flatMap((conceptId) => conceptById.get(conceptId)?.documentIds ?? []),
+      [
+        ...insight.conceptIds.flatMap(
+          (conceptId) => conceptById.get(conceptId)?.documentIds ?? [],
+        ),
+        ...evidence.map((item) => item.documentId),
+      ],
     ),
   );
   const sources = sourceIds
@@ -68,6 +75,15 @@ export function InsightCard({ insight, onDismiss }: InsightCardProps) {
       <div className="discovery__body">
         <p className="discovery__rationale">{insight.rationale}</p>
 
+        {insight.evidenceLevel ? (
+          <div className="discovery__evidence-meta">
+            <Badge tone={EVIDENCE_LEVELS[insight.evidenceLevel].tone}>
+              {EVIDENCE_LEVELS[insight.evidenceLevel].label}
+            </Badge>
+            <span>{EVIDENCE_LEVELS[insight.evidenceLevel].description}</span>
+          </div>
+        ) : null}
+
         {edge && from && to ? (
           <div className="discovery__edge">
             <div className="discovery__edge-head">
@@ -83,6 +99,26 @@ export function InsightCard({ insight, onDismiss }: InsightCardProps) {
               {to.label}
             </p>
             <p className="discovery__rationale">{edge.explanation}</p>
+          </div>
+        ) : null}
+
+        {evidence.length > 0 ? (
+          <div className="discovery__block">
+            <p className="discovery__label">Supporting evidence</p>
+            <ul className="evidence-list">
+              {evidence.map((item, index) => (
+                <li key={`${item.documentId}-${index}`} className="evidence-item">
+                  <blockquote className="evidence-quote">{item.excerpt}</blockquote>
+                  <Link
+                    to={projectPath(workspace.id, `sources/${item.documentId}`)}
+                    className="evidence-source"
+                  >
+                    {documentById.get(item.documentId)?.title ?? 'Source document'}
+                  </Link>
+                  {item.note ? <p className="evidence-note">{item.note}</p> : null}
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
 

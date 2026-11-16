@@ -121,6 +121,9 @@ export interface Insight {
   confidence: number;
   edgeId?: string;
   createdAt: string;
+  evidenceLevel?: EvidenceLevel;
+  evidence?: EvidenceReference[];
+  documentIds?: string[];
 }
 
 export interface GraphPreferences {
@@ -168,6 +171,7 @@ export interface ProjectAnalysisRecord {
   documentIds: string[];
   conceptCount: number;
   connectionCount: number;
+  insightCount: number;
   model?: string;
 }
 
@@ -205,6 +209,7 @@ export interface ProjectAnalysisStatusResponse {
   documentCount: number;
   conceptCount: number;
   connectionCount: number;
+  insightCount: number;
   startedAt?: string;
   completedAt?: string;
   updatedAt: string;

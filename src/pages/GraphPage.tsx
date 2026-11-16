@@ -50,7 +50,14 @@ export function GraphPage() {
     const from = conceptById.get(connection.from);
     const to = conceptById.get(connection.to);
     if (!from || !to) return false;
-    return from.documentIds.every((documentId) => !to.documentIds.includes(documentId));
+    const evidenceDocuments = new Set(
+      (connection.evidence ?? []).map((entry) => entry.documentId),
+    );
+    return (
+      Boolean(connection.isBridge) ||
+      evidenceDocuments.size > 1 ||
+      from.documentIds.every((documentId) => !to.documentIds.includes(documentId))
+    );
   }).length;
 
   return (

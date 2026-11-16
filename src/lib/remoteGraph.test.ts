@@ -122,6 +122,38 @@ describe('remote graph merging', () => {
     expect(stripped.connections).toHaveLength(0);
   });
 
+  it('merges remote insights with their concept links and evidence', () => {
+    const next = mergeRemoteGraph(state, 'remote-1', {
+      concepts: [concept('concept-new', ['doc-r1', 'doc-r2'])],
+      connections: [],
+      insights: [
+        {
+          id: 'insight-new',
+          kind: 'pattern',
+          title: 'A recurring local pattern',
+          summary: 'Both sources repeat the same local decision pattern.',
+          rationale: 'The excerpts describe the same behaviour in different settings.',
+          conceptIds: ['concept-new'],
+          confidence: 0.6,
+          createdAt: '2026-11-16',
+          evidenceLevel: 'inference',
+          evidence: [
+            { documentId: 'doc-r1', excerpt: 'r1 quote' },
+            { documentId: 'doc-r2', excerpt: 'r2 quote' },
+          ],
+        },
+      ],
+    });
+
+    expect(next.insights).toHaveLength(1);
+    expect(next.insights[0]).toMatchObject({
+      id: 'insight-new',
+      conceptIds: ['concept-new'],
+      evidenceLevel: 'inference',
+    });
+    expect(next.insights[0]?.evidence).toHaveLength(2);
+  });
+
   it('removes remote sources and their analysis on session replacement', () => {
     const next = removeRemoteSessionData(state);
     expect(next.documents.map((item) => item.id)).toEqual(['doc-local']);

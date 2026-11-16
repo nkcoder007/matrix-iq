@@ -5,6 +5,8 @@ import type {
   Connection,
   EvidenceLevel,
   EvidenceReference,
+  Insight,
+  InsightKind,
   RelationType,
 } from '../../types';
 import type { AiDocument } from './types';
@@ -31,12 +33,16 @@ export const RELATION_IDS: RelationType[] = [
 
 export const EVIDENCE_LEVEL_IDS: EvidenceLevel[] = ['direct', 'inference', 'speculative'];
 
+export const INSIGHT_KINDS: InsightKind[] = ['bridge', 'pattern', 'tension', 'gap'];
+
 export type GeneratedConcept = Omit<Concept, 'sessionId'>;
 export type GeneratedConnection = Omit<Connection, 'sessionId'>;
+export type GeneratedInsight = Omit<Insight, 'sessionId' | 'createdAt'>;
 
 export interface ValidatedAnalysis {
   concepts: GeneratedConcept[];
   connections: GeneratedConnection[];
+  insights: GeneratedInsight[];
 }
 
 export class AnalysisValidationError extends Error {
@@ -297,5 +303,108 @@ export function validateAnalysis(
     });
   }
 
-  return { concepts, connections: [...connectionByKey.values()] };
+  const rawInsights = raw.insights === undefined ? [] : asArray(raw.insights, 'insights', 6);
+  const insightByKey = new Map<string, GeneratedInsight>();
+  const connectionList = [...connectionByKey.values()];
+
+  for (const item of rawInsights) {
+    if (!isRecord(item)) {
+      throw new AnalysisValidationError('The AI returned a malformed insight.');
+    }
+    if (typeof item.kind !== 'string' || !INSIGHT_KINDS.includes(item.kind as InsightKind)) {
+      throw new AnalysisValidationError('The AI returned an unsupported insight kind.');
+    }
+    const kind = item.kind as InsightKind;
+    const title = text(item.title, 'insight title', 5, 200);
+    const summary = text(item.summary, 'insight summary', 10, 500);
+    const rationale = text(item.rationale, 'insight rationale', 10, 1200);
+    const evidenceLevel = readLevel(item.evidenceLevel);
+    const evidence = readEvidence(item.evidence, 'insight evidence', documentMap);
+    if (evidenceLevel === 'inference' && evidence.length < 2) {
+      throw new AnalysisValidationError(
+        'An inferred insight needs at least two pieces of evidence.',
+      );
+    }
+
+    const evidenceDocuments = new Set(evidence.map((entry) => entry.documentId));
+    if ((kind === 'bridge' || kind === 'pattern') && evidenceDocuments.size < 2) {
+      throw new AnalysisValidationError(
+        `A ${kind} insight needs evidence from at least two documents.`,
+      );
+    }
+
+    const rawLabels = asArray(item.conceptLabels, 'insight concept labels', 8);
+    if (rawLabels.length === 0) {
+      throw new AnalysisValidationError('An insight did not reference any concepts.');
+    }
+    const insightConcepts = rawLabels.map((value) => {
+      const label = text(value, 'insight concept label', 1, 160);
+      const concept = byLabel.get(normalizeLabel(label)) ?? byId.get(label);
+      if (!concept) {
+        throw new AnalysisValidationError(
+          'An insight referenced a concept that was not in the concept list.',
+        );
+      }
+      return concept;
+    });
+    const conceptIds = Array.from(new Set(insightConcepts.map((concept) => concept.id)));
+    if (kind === 'bridge' && conceptIds.length < 2) {
+      throw new AnalysisValidationError('A bridge insight needs at least two concepts.');
+    }
+
+    let edgeId: string | undefined;
+    if (item.connection !== undefined && item.connection !== null) {
+      if (!isRecord(item.connection)) {
+        throw new AnalysisValidationError('An insight contained a malformed connection.');
+      }
+      const fromLabel = text(item.connection.from, 'insight connection source', 1, 160);
+      const toLabel = text(item.connection.to, 'insight connection target', 1, 160);
+      const type = text(item.connection.type, 'insight connection type', 1, 40);
+      const from = byLabel.get(normalizeLabel(fromLabel)) ?? byId.get(fromLabel);
+      const to = byLabel.get(normalizeLabel(toLabel)) ?? byId.get(toLabel);
+      const match = connectionList.find(
+        (connection) =>
+          connection.type === type &&
+          ((connection.from === from?.id && connection.to === to?.id) ||
+            ((type === 'related' || type === 'similar') &&
+              connection.from === to?.id &&
+              connection.to === from?.id)),
+      );
+      if (!from || !to || !match) {
+        throw new AnalysisValidationError(
+          'An insight referenced a connection that was not in the connection list.',
+        );
+      }
+      edgeId = match.id;
+    }
+
+    const rawConfidence = score(item.confidence, 'insight confidence');
+    const confidence =
+      evidenceLevel === 'direct'
+        ? Math.min(rawConfidence, 0.95)
+        : evidenceLevel === 'inference'
+          ? Math.min(rawConfidence, 0.7)
+          : Math.min(rawConfidence, 0.4);
+    const key = `${kind}|${normalizeText(title)}`;
+    if (insightByKey.has(key)) continue;
+    insightByKey.set(key, {
+      id: stableId('insight', projectId, key),
+      kind,
+      title,
+      summary,
+      rationale,
+      conceptIds,
+      confidence,
+      ...(edgeId ? { edgeId } : {}),
+      evidenceLevel,
+      evidence,
+      documentIds: [...evidenceDocuments],
+    });
+  }
+
+  return {
+    concepts,
+    connections: connectionList,
+    insights: [...insightByKey.values()],
+  };
 }
