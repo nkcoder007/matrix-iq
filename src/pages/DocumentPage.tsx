@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useKnowledge } from '../store/KnowledgeContext';
 import { DocumentGlyph, KIND_LABEL } from '../components/documents/DocumentGlyph';
@@ -23,9 +24,15 @@ export function DocumentPage() {
     clusterById,
     conceptById,
     workspace,
+    loadRemoteDocumentContent,
   } = useKnowledge();
 
   const document = docId ? documentById.get(docId) : undefined;
+
+  useEffect(() => {
+    if (!document?.remoteProjectId || document.content) return;
+    void loadRemoteDocumentContent(document.id);
+  }, [document, loadRemoteDocumentContent]);
 
   if (!document) {
     return (
@@ -101,7 +108,7 @@ export function DocumentPage() {
           <p className="doc-header__sub">{document.subtitle}</p>
         </div>
         <div className="doc-header__actions">
-          {!queued ? (
+          {!queued && document.conceptIds.length > 0 ? (
             <Link
               to={`${projectPath(workspace.id, 'graph')}?node=${document.conceptIds[0] ?? ''}`}
               className="btn btn--secondary btn--sm"
@@ -151,11 +158,30 @@ export function DocumentPage() {
               </section>
             </>
           ) : (
-            <section className="doc-section card">
-              <p className="eyebrow">What this source says</p>
-              <p className="doc-summary">{document.summary}</p>
-              {document.excerpt ? <blockquote className="reader">{document.excerpt}</blockquote> : null}
-            </section>
+            <>
+              <section className="doc-section card">
+                <p className="eyebrow">What this source says</p>
+                <p className="doc-summary">{document.summary}</p>
+                {document.excerpt ? <blockquote className="reader">{document.excerpt}</blockquote> : null}
+              </section>
+              {document.content ? (
+                <section className="doc-section card doc-stored">
+                  <div className="spread">
+                    <p className="eyebrow">Extracted text</p>
+                    <span className="mono doc-count">{formatWords(document.words)}</span>
+                  </div>
+                  {document.fileName ? (
+                    <p className="doc-muted">
+                      Extracted from {document.fileName}
+                      {document.pages
+                        ? ` · ${document.pages} ${document.pages === 1 ? 'page' : 'pages'}`
+                        : ''}
+                    </p>
+                  ) : null}
+                  <pre className="doc-source-text">{document.content}</pre>
+                </section>
+              ) : null}
+            </>
           )}
 
           {concepts.length > 0 ? (

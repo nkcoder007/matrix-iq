@@ -4,6 +4,7 @@ import type { KnowledgeState } from '../types';
 import {
   isPersistedSnapshot,
   snapshotVersion,
+  withoutRemoteSources,
   type PersistedSnapshot,
 } from './persistence';
 
@@ -59,5 +60,33 @@ describe('isPersistedSnapshot', () => {
         prefs: { ...snapshot.prefs, theme: 'sepia' },
       }),
     ).toBe(false);
+  });
+});
+
+describe('withoutRemoteSources', () => {
+  it('keeps local sources but removes session-only remote documents', () => {
+    const remote = {
+      ...DOCUMENTS[0],
+      id: 'remote-doc',
+      remoteProjectId: 'remote-project',
+      content: 'temporary backend text',
+      fileKey: 'remote-file',
+    };
+    const local = { ...DOCUMENTS[1], id: 'local-doc', content: 'browser text' };
+    const prepared = withoutRemoteSources({
+      ...snapshot,
+      state: {
+        ...snapshot.state,
+        workspaces: [
+          { ...WORKSPACES[0], id: 'ws-test', documentIds: ['remote-doc', 'local-doc'] },
+        ],
+        documents: [remote, local],
+      },
+    });
+
+    expect(prepared.state.documents).toHaveLength(1);
+    expect(prepared.state.documents[0]?.id).toBe('local-doc');
+    expect(prepared.state.documents[0]?.content).toBe('browser text');
+    expect(prepared.state.workspaces[0]?.documentIds).toEqual(['local-doc']);
   });
 });

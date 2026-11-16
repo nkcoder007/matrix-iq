@@ -5,6 +5,7 @@ import { NewProjectModal } from '../components/projects/NewProjectModal';
 import { SiteHeader } from '../components/layout/SiteHeader';
 import { useKnowledge } from '../store/KnowledgeContext';
 import { projectPath } from '../lib/paths';
+import { backendConfig } from '../services/api';
 
 export function HomePage() {
   const { workspaces } = useKnowledge();
@@ -84,8 +85,9 @@ export function HomePage() {
         <footer className="home__foot">
           <Icon name="info" size={14} />
           <span>
-            Projects, sources and discoveries are saved in this browser. Nothing is sent to a
-            server.
+            {backendConfig.configured
+              ? 'Local projects and preferences stay in this browser. Uploaded sources are sent only to the temporary backend session.'
+              : 'Projects, sources and discoveries are saved in this browser. Nothing is sent to a server.'}
           </span>
         </footer>
       </main>

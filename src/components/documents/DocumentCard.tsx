@@ -29,7 +29,7 @@ export function DocumentCard({ document }: { document: KnowledgeDocument }) {
         ) : (
           <span className="doc-card__cluster">
             <span className="dot" style={{ color: cluster?.color }} />
-            {cluster?.short}
+            {cluster?.short ?? 'Extracted'}
           </span>
         )}
       </div>
@@ -43,6 +43,8 @@ export function DocumentCard({ document }: { document: KnowledgeDocument }) {
       <div className="doc-card__tags">
         {queued ? (
           <span className="tag">Waiting for analysis</span>
+        ) : concepts.length === 0 ? (
+          <span className="tag">Text extracted</span>
         ) : (
           <>
             {concepts.slice(0, 3).map((concept) => (

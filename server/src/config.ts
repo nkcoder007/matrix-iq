@@ -1,5 +1,7 @@
 export const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 export const DEFAULT_SESSION_SWEEP_MS = 5 * 60 * 1000;
+export const DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+export const DEFAULT_PDF_MAX_PAGES = 200;
 
 export const DEFAULT_CORS_ORIGINS = [
   'http://localhost:5173',
@@ -33,4 +35,16 @@ export function readCorsOrigins(env: NodeJS.ProcessEnv = process.env): string[] 
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+export interface UploadConfig {
+  maxBytes: number;
+  maxPdfPages: number;
+}
+
+export function readUploadConfig(env: NodeJS.ProcessEnv = process.env): UploadConfig {
+  return {
+    maxBytes: positiveInteger(env.UPLOAD_MAX_BYTES, DEFAULT_UPLOAD_MAX_BYTES),
+    maxPdfPages: positiveInteger(env.PDF_MAX_PAGES, DEFAULT_PDF_MAX_PAGES),
+  };
 }

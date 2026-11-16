@@ -218,6 +218,30 @@ describe('API session integration', () => {
     expect(sessionValues.has(apiModule.SESSION_STORAGE_KEY)).toBe(false);
   });
 
+  it('notifies listeners when the backend session is replaced', async () => {
+    await loadRemoteApi();
+    sessionValues.set(apiModule.SESSION_STORAGE_KEY, 'expired-session');
+    const events: Array<string | null> = [];
+    const unsubscribe = apiModule.subscribeToSessionChange((sessionId) => events.push(sessionId));
+
+    fetchMock.mockImplementation(async (request, init) => {
+      const url = String(request);
+      if (url.endsWith('/session')) return jsonResponse({ sessionId: 'fresh-session' }, 201);
+      if (url.endsWith('/projects')) {
+        const sessionId = new Headers(init?.headers).get('X-Session-ID');
+        return sessionId === 'fresh-session'
+          ? jsonResponse([])
+          : jsonResponse({ message: 'Session expired.' }, 401);
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    await expect(apiModule.api.projects.list()).resolves.toEqual([]);
+    unsubscribe();
+
+    expect(events).toEqual([null, 'fresh-session']);
+  });
+
   it('keeps local mode network-free', async () => {
     vi.resetModules();
     vi.stubEnv('VITE_API_MODE', 'local');

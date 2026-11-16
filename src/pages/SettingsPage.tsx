@@ -41,7 +41,11 @@ export function SettingsPage() {
       <PageHeader
         eyebrow="Settings"
         title="Project settings"
-        description="These settings apply to the current project. Projects, sources and preferences are saved in this browser. Nothing is sent to a server."
+        description={
+          backendConfig.configured
+            ? 'These settings apply to the current project. Local projects and preferences stay in this browser; uploaded sources use the temporary backend session.'
+            : 'These settings apply to the current project. Projects, sources and preferences are saved in this browser. Nothing is sent to a server.'
+        }
         actions={<Badge tone="neutral">Version 0.1.0</Badge>}
       />
 
@@ -109,7 +113,7 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Saved source text</dt>
-              <dd>This browser</dd>
+              <dd>{backendConfig.configured ? 'Temporary backend session' : 'This browser'}</dd>
             </div>
             <div>
               <dt>Cross-project reading</dt>
@@ -120,9 +124,9 @@ export function SettingsPage() {
           <div className="settings-note">
             <Icon name="info" size={15} />
             <p>
-              New sources keep their original text or file locally and stay queued. Generated
-              ideas, connections and insights will appear only when the future analysis service is
-              connected.
+              {backendConfig.configured
+                ? 'New sources are extracted in the temporary backend session and their metadata is cleared when that session ends. Generated ideas, connections and insights will appear only when the future analysis service is connected.'
+                : 'New sources keep their original text or file locally and stay queued. Generated ideas, connections and insights will appear only when the future analysis service is connected.'}
             </p>
           </div>
         </section>
@@ -130,7 +134,7 @@ export function SettingsPage() {
         <section className="settings-card card">
           <div>
             <h2 className="settings-title">Backend connection</h2>
-            <p className="settings-sub">Reserved for the future analysis service.</p>
+            <p className="settings-sub">Used for temporary source uploads when remote mode is enabled.</p>
           </div>
 
           <dl className="detail-pairs">
@@ -144,7 +148,7 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Requests sent</dt>
-              <dd>None in this build</dd>
+              <dd>{backendConfig.configured ? 'Source uploads and project setup' : 'None in local mode'}</dd>
             </div>
           </dl>
 
@@ -248,19 +252,28 @@ export function SettingsPage() {
             </div>
             <div>
               <dt>Visibility</dt>
-              <dd>Private · this browser</dd>
+              <dd>
+                {backendConfig.configured
+                  ? 'Private · this browser and temporary session'
+                  : 'Private · this browser'}
+              </dd>
             </div>
             <div>
               <dt>Storage</dt>
-              <dd>IndexedDB · saved between visits</dd>
+              <dd>
+                {backendConfig.configured
+                  ? 'IndexedDB for local projects · remote sources session-only'
+                  : 'IndexedDB · saved between visits'}
+              </dd>
             </div>
           </dl>
 
           <div className="settings-note">
             <Icon name="info" size={15} />
             <p>
-              Projects, sources, dismissals and saved links survive reloads in this browser.
-              Accounts, server sync and document analysis are not connected yet.
+              {backendConfig.configured
+                ? 'Local projects, preferences, dismissals and saved links survive reloads. Remote sources survive reloads only while the backend session is active. Accounts and document analysis are not connected yet.'
+                : 'Projects, sources, dismissals and saved links survive reloads in this browser. Accounts, server sync and document analysis are not connected yet.'}
             </p>
           </div>
         </section>

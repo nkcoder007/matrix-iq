@@ -4,6 +4,7 @@ import { useKnowledge } from '../../store/KnowledgeContext';
 import { Icon } from '../icons';
 import { Badge } from '../ui/Badge';
 import type { DocumentKind } from '../../types';
+import { ApiError, backendConfig } from '../../services/api';
 
 interface QueuedSource {
   id: string;
@@ -41,12 +42,14 @@ export function SourceIntake() {
   const [justAdded, setJustAdded] = useState(0);
   const [staging, setStaging] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
 
   const stageFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    setError(null);
     setStaging(true);
     const stamp = Date.now();
     const staged = await Promise.all(
@@ -83,6 +86,7 @@ export function SourceIntake() {
 
   const stagePaste = () => {
     if (!text.trim()) return;
+    setError(null);
     const words = countWords(text);
     setQueue((current) => [
       ...current,
@@ -103,6 +107,7 @@ export function SourceIntake() {
   const commit = async () => {
     if (queue.length === 0 || saving) return;
     setSaving(true);
+    setError(null);
     try {
       await addQueuedSources(
         queue.map((source) => ({
@@ -119,6 +124,12 @@ export function SourceIntake() {
       );
       setJustAdded(queue.length);
       setQueue([]);
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError
+          ? cause.message
+          : 'The sources could not be added. Please try again.',
+      );
     } finally {
       setSaving(false);
     }
@@ -264,10 +275,21 @@ export function SourceIntake() {
               onClick={() => void commit()}
               disabled={saving}
             >
-              {saving ? 'Saving…' : `Add to ${workspace.name}`}
+              {saving
+                ? backendConfig.configured
+                  ? 'Uploading and extracting…'
+                  : 'Saving…'
+                : `Add to ${workspace.name}`}
             </button>
           </div>
         </div>
+      ) : null}
+
+      {error ? (
+        <p className="intake__error" role="alert">
+          <Icon name="alert" size={13} />
+          {error}
+        </p>
       ) : null}
 
       {justAdded > 0 ? (
@@ -278,8 +300,9 @@ export function SourceIntake() {
       ) : null}
 
       <p className="intake__note">
-        Original text and files are stored in this browser. Automatic analysis needs the future
-        backend, so new sources stay marked “waiting for analysis” until then.
+        {backendConfig.configured
+          ? 'Files and pasted text are sent to the backend, which extracts readable text and keeps the originals in memory for this browser session. Automatic analysis is not connected yet.'
+          : 'Original text and files are stored in this browser. Automatic analysis needs the future backend, so new sources stay marked “waiting for analysis” until then.'}
       </p>
     </section>
   );

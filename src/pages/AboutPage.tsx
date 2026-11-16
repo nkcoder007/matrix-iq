@@ -1,6 +1,7 @@
 import { Icon } from '../components/icons';
 import { SiteHeader } from '../components/layout/SiteHeader';
 import type { IconName } from '../components/icons';
+import { backendConfig } from '../services/api';
 
 const STEPS: { title: string; text: string; icon: IconName }[] = [
   {
@@ -244,8 +245,9 @@ export function AboutPage() {
         <footer className="home__foot">
           <Icon name="info" size={14} />
           <span>
-            This build saves projects, sources and discoveries in this browser, along with your
-            appearance preference. Nothing is sent to a server.
+            {backendConfig.configured
+              ? 'Local projects and preferences stay in this browser. Uploaded sources are sent only to the temporary backend session.'
+              : 'This build saves projects, sources and discoveries in this browser, along with your appearance preference. Nothing is sent to a server.'}
           </span>
         </footer>
       </main>

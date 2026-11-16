@@ -72,6 +72,28 @@ export interface SourceAnalysis {
 let memorySessionId: string | null = null;
 let pendingSession: Promise<string> | null = null;
 let ignoredSessionId: string | null = null;
+const sessionChangeListeners = new Set<(sessionId: string | null) => void>();
+
+export function currentSessionId(): string | null {
+  return storedSessionId();
+}
+
+export function subscribeToSessionChange(
+  listener: (sessionId: string | null) => void,
+): () => void {
+  sessionChangeListeners.add(listener);
+  return () => sessionChangeListeners.delete(listener);
+}
+
+function notifySessionChange(sessionId: string | null): void {
+  for (const listener of sessionChangeListeners) {
+    try {
+      listener(sessionId);
+    } catch {
+      // A failing listener must not break the request that changed the session.
+    }
+  }
+}
 
 function sessionStorageOrNull(): Storage | null {
   try {
@@ -92,6 +114,7 @@ function storedSessionId(): string | null {
 }
 
 function rememberSessionId(sessionId: string): void {
+  const previous = storedSessionId();
   memorySessionId = sessionId;
   ignoredSessionId = null;
   try {
@@ -100,6 +123,7 @@ function rememberSessionId(sessionId: string): void {
     // Private browsing can block storage; the in-memory fallback still works
     // for this page load.
   }
+  if (previous !== sessionId) notifySessionChange(sessionId);
 }
 
 function forgetSessionId(sessionId: string): void {
@@ -119,6 +143,7 @@ function forgetSessionId(sessionId: string): void {
   if (!memoryMatches && !storageMatches) return;
   if (memoryMatches) memorySessionId = null;
   ignoredSessionId = sessionId;
+  notifySessionChange(null);
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {

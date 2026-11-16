@@ -1,8 +1,9 @@
 # MatrixIQ — knowledge, connected
 
 A local-first personal knowledge graph with a session-scoped Hono backend. Add sources to a
-project, keep their original text or file in the browser, and explore seeded concepts and
-connections across documents that look unrelated.
+project and explore seeded concepts and connections across documents that look unrelated. Local
+mode keeps original text and files in the browser; remote mode uploads PDFs, Markdown and text to
+the backend, which extracts readable text into temporary session memory.
 
 The app opens on a home page that explains the idea and lists projects. A project workspace holds
 its own sources, graph, insights and saved links; sources never move between projects.
@@ -23,8 +24,9 @@ projects, with or without the sample sources.
 | Graph | **Custom SVG + a deterministic layout function** | Full control over labels, arrows and interaction. |
 | Local state | **IndexedDB + localStorage fallback** | Projects and source content survive reloads without a server. |
 | Backend | **Hono 4 + Node.js + TypeScript** | Session-scoped project API with in-memory state. |
+| PDF text | **pdf-parse 2** | Server-side PDF text extraction without a browser parser. |
 | Icons | Inline SVG components | Small bundle, consistent icon set. |
-| Tests | **Vitest** | Frontend state helpers plus backend session and project API tests. |
+| Tests | **Vitest** | Frontend state helpers plus backend session, project and upload tests. |
 
 No UI kit, chart library, CSS framework or state-management package. Frontend runtime
 dependencies are React, React DOM and React Router; the backend uses Hono and Node.js.
@@ -39,7 +41,7 @@ npm run test     # focused Vitest suite
 npm run preview  # serve the production build
 ```
 
-Node 20+ is recommended.
+Node 20.16+ is recommended (the PDF parser requires it).
 
 The backend has its own package and dependencies:
 
@@ -75,20 +77,24 @@ redirect into the active project so bookmarks keep working.
 
 ## Local persistence
 
-The app keeps its working state in the browser, and **local mode is the default**. The backend
-currently stores only in-memory, session-scoped project data and is not yet used by the UI screens.
-There is no account, database or permanent server storage.
+The app keeps its working state in the browser, and **local mode is the default**. When remote mode
+is configured, the Sources screen talks to the backend; all other project screens still read the
+local snapshot. There is no account, database or permanent server storage.
 
 - **IndexedDB** stores the complete workspace snapshot and original uploaded files separately.
 - **localStorage** stores the light/dark preference and acts as a metadata-only fallback for the
   workspace snapshot if IndexedDB is blocked. File blobs remain IndexedDB-only in that case.
-- Projects, sources, full pasted/text content, concepts, connections, insights, dismissed findings,
-  saved connections and graph preferences are restored on reload.
+- **Local-mode** projects, sources, full pasted/text content, concepts, connections, insights,
+  dismissed findings, saved connections and graph preferences are restored on reload.
 - A storage warning appears if the browser refuses or runs out of space. The session still works,
   but changes may not survive a reload.
 - Deleting a source cascades to concepts that exist only in that source, then to connections and
   insights that reference those concepts. Deleting a project does the same for all its sources and
   removes stored files. The last remaining project cannot be deleted.
+- Remote sources are session-scoped. Their mapping and metadata live in `sessionStorage`, never in
+  IndexedDB, and are bound to the active backend session. A new browser session or a replaced
+  backend session removes them; opening a source again fetches its extracted text from the live
+  session. Local-mode data is untouched by this cleanup.
 - Source and project names can be changed from the source page and Settings. Project deletion also
   lives in Settings.
 
@@ -98,13 +104,22 @@ The theme toggle remains in Settings and is applied before the app finishes load
 
 The Sources tab supports drag-and-drop and the file picker for PDF, Markdown and plain text.
 
-- Markdown and text files are read into the saved source as text, and the original file is also kept.
-- PDFs are stored as uploaded files; the frontend does not parse them.
-- Pasted text is saved in full.
-- New sources are marked **queued / waiting for analysis**. They have no generated concepts or
-  connections, because analysis is intentionally not implemented in the frontend.
-- Source detail pages show stored text, allow downloading the original file, and provide rename and
-  delete actions.
+- **Local mode** reads Markdown and text into the saved source, keeps the original file in
+  IndexedDB, and marks new sources **queued / waiting for analysis**. PDFs are stored but not parsed.
+- **Remote mode** uploads the original file (or pasted text) to `POST /projects/:id/sources`. The
+  backend validates the extension, MIME type and size, extracts PDF/TXT/Markdown text, and returns
+  the extracted content. Unsupported, empty, oversized, corrupted or text-free documents return a
+  clear 4xx error.
+- PDFs are parsed with `pdf-parse`; TXT and Markdown are decoded as strict UTF-8. Paragraphs,
+  headings and meaningful whitespace are preserved while CRLF noise, NUL characters and excessive
+  blank lines are normalized. Documents that produce no usable text are rejected.
+- The upload size defaults to 10 MiB and is configurable with `UPLOAD_MAX_BYTES`. PDFs default to a
+  200-page limit, configurable with `PDF_MAX_PAGES`.
+- Remote source detail pages show the extracted text, word count, page count and original filename.
+  Deleting a source also deletes its backend copy. Original file buffers and extracted text live in
+  the backend session's memory only and disappear on session expiry or project deletion.
+- Local source detail pages show stored text and allow downloading the original file. Both modes
+  provide rename and delete actions.
 - The source count uses the project's unique concept count rather than summing per-document
   concepts.
 
@@ -150,7 +165,7 @@ The palette footer and empty state describe that scope. The API searches only ob
 - Appearance: persistent light/dark mode.
 - Graph: labels, suggested-link highlighting and reduced motion.
 - Analysis: clearly shows that source analysis is not connected.
-- Backend connection: shows local vs remote mode, API base URL and that no requests are sent.
+- Backend connection: shows local vs remote mode, API base URL and whether source requests are sent.
 - Project: rename or delete the active project.
 - Relationship taxonomy reference.
 - Data: export the active project (including saved connection IDs) as JSON.
@@ -161,10 +176,9 @@ graph, which continued to show all links at every value.
 
 ## Backend integration seam
 
-The repository contains the Phase 0–1.1 backend: Hono on Node.js with in-memory sessions and
-session-scoped project CRUD/cascade deletion. There is no authentication, database, permanent
-storage, source upload or analysis yet. The UI still reads and writes its local IndexedDB state;
-the typed API client is the integration seam for later phases.
+The repository contains the Phase 0–2 backend: Hono on Node.js with in-memory sessions,
+session-scoped project CRUD/cascade deletion, and PDF/TXT/Markdown upload with text extraction.
+There is still no authentication, database, permanent storage or AI analysis.
 
 Frontend configuration (copy `.env.example` to `.env`):
 
@@ -181,12 +195,18 @@ VITE_API_MODE=local                 # default: no network calls
   to the backend through Vite.
 - The typed client lives in `src/services/api.ts`. It throws a clear configuration error instead of
   calling a half-configured backend.
+- The Sources screen uses the backend only when remote mode is configured. It maps each browser
+  project to a temporary backend project on the first upload, reuses that mapping across uploads,
+  and recreates it if the backend session or project has expired. The mapping and remote source
+  metadata live in `sessionStorage`, bound to the backend session; local mode is untouched and
+  remains network-free.
 - On the first protected request, the client calls `POST /session`, stores the returned session ID
   in `sessionStorage`, and attaches it as `X-Session-ID`. Concurrent initialization calls share one
   bootstrap request, and reloads reuse the stored ID. If a stored session gets a `401`, the client
   removes it, bootstraps a replacement, and retries the original request once; a second `401` is
   returned to the caller without looping. `POST /session` and `GET /health` require no session.
-- No component calls the client yet; the UI remains useful offline in local mode.
+- Other screens (graph, insights, settings) still read the local snapshot. The demo corpus remains
+  available offline in local mode.
 - Authentication is not implemented. The session ID is an anonymous in-memory scope, not a login.
 
 Backend configuration (copy `server/.env.example` to `server/.env`):
@@ -196,6 +216,8 @@ PORT=8787
 SESSION_TTL_MS=1800000       # 30 minutes of inactivity
 SESSION_SWEEP_MS=300000      # reap expired sessions every 5 minutes
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+UPLOAD_MAX_BYTES=10485760    # 10 MiB per file or pasted document
+PDF_MAX_PAGES=200
 ```
 
 Expired sessions are rejected on access as well as by the periodic sweep. All state is in memory
@@ -221,8 +243,9 @@ Expected contract (relative to the base URL):
 | `POST` | `/projects/:id/sources/:sourceId/analyze` | Queue analysis |
 | `GET` | `/projects/:id/sources/:sourceId/analysis` | Poll analysis status |
 
-Project CRUD and cascade deletion are implemented. Source, graph, insight and analysis endpoints
-remain part of the future contract and are not implemented yet.
+Project CRUD, cascade deletion, and source upload/list/detail/delete are implemented. Uploads
+accept multipart `file`, `content` and `title`. Graph, insight and analysis endpoints remain part
+of the future contract and are not implemented yet.
 
 ## Project structure
 
@@ -252,7 +275,9 @@ src/
 ├─ pages/           HomePage, AboutPage, Dashboard, GraphPage, SourcesPage,
 │                   DocumentPage, InsightsPage, SettingsPage, NotFound
 ├─ services/
-│  └─ api.ts        Typed backend contract + environment configuration
+│  ├─ api.ts        Typed backend contract + environment configuration
+│  ├─ remoteProjects.ts  Session-scoped local-project → backend-project mapping
+│  └─ remoteSession.ts   Session-bound mappings and remote source metadata
 ├─ store/           KnowledgeContext — persistence + project-scoped state
 ├─ styles/          tokens.css, base.css, components.css, layout.css, pages.css,
 │                   redesign.css, theme.css
@@ -265,10 +290,12 @@ src/
 server/
 ├─ src/
 │  ├─ app.ts                 Hono app, public session route, CORS, errors
-│  ├─ config.ts              Session timing and CORS environment config
+│  ├─ config.ts              Session, CORS and upload environment config
 │  ├─ index.ts               Node server entry point
 │  ├─ middleware/session.ts  X-Session-ID validation and expiry checks
 │  ├─ routes/projects.ts     Project CRUD and cascade deletion
+│  ├─ routes/sources.ts      Upload, extraction, retrieval and source cleanup
+│  ├─ services/textExtraction.ts  PDF/TXT/Markdown normalization and extraction
 │  ├─ services/sessionStore.ts  In-memory TTL session store
 │  └─ types.ts               Backend domain and session types
 ├─ tsconfig.json
@@ -285,7 +312,7 @@ Domain models in `src/types.ts`:
 ```ts
 Workspace → documentIds[]              // scope boundary
 KnowledgeDocument → conceptIds[], status ('extracted' | 'queued'),
-                    content?, fileKey?, fileName?, mimeType?, fileSize?
+                    content?, fileKey?, remoteProjectId?, fileName?, mimeType?, fileSize?
 Concept → clusterId, documentIds[], mentions
 Connection → from, to, type, confidence, strength, explanation
 Insight → kind ('bridge' | 'gap' | 'tension' | 'pattern'), confidence, edgeId?
@@ -297,10 +324,15 @@ aggregation independent of React and covered by tests.
 
 ## Scope and limitations
 
-- The UI is still local-first; backend project routes are implemented, but no screen calls them yet.
-- No authentication, user accounts, server database, permanent storage, source upload or AI analysis.
-- Only the bundled sample corpus has extracted concepts and insights; new sources stay queued.
-- PDF text is not extracted. Original files are stored for a future backend.
+- The UI is local-first. The Sources screen uses backend uploads in remote mode; graph, insights and
+  settings still read the local snapshot.
+- No authentication, user accounts, server database, permanent storage or AI analysis.
+- Only the bundled sample corpus has concepts and insights. Uploaded sources have extracted text but
+  no automatic analysis yet, so their concept and connection lists stay empty.
+- Local mode still stores PDFs without parsing them. PDF extraction is available only in remote mode.
+- Remote source content, metadata and mappings are kept only for the current browser and backend
+  session. They are never written to IndexedDB. After a reload, opening the source fetches its text
+  from the live session; when the browser or backend session ends, remote sources are cleared.
 - "Broader Insights" is a digest of existing findings, not new model-generated synthesis.
 - Static hosting requires a SPA fallback because the app uses `BrowserRouter` (for example a
   `404.html` copy of `index.html`, or hash routing).

@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CORS_ORIGINS,
+  DEFAULT_PDF_MAX_PAGES,
   DEFAULT_SESSION_SWEEP_MS,
   DEFAULT_SESSION_TTL_MS,
+  DEFAULT_UPLOAD_MAX_BYTES,
   readCorsOrigins,
   readSessionStoreConfig,
+  readUploadConfig,
 } from './config';
 
 describe('backend configuration', () => {
@@ -41,5 +44,20 @@ describe('backend configuration', () => {
         CORS_ORIGINS: 'https://app.example.com, https://admin.example.com',
       }),
     ).toEqual(['https://app.example.com', 'https://admin.example.com']);
+  });
+
+  it('reads upload limits with safe defaults', () => {
+    expect(readUploadConfig({})).toEqual({
+      maxBytes: DEFAULT_UPLOAD_MAX_BYTES,
+      maxPdfPages: DEFAULT_PDF_MAX_PAGES,
+    });
+    expect(readUploadConfig({ UPLOAD_MAX_BYTES: '2048', PDF_MAX_PAGES: '8' })).toEqual({
+      maxBytes: 2048,
+      maxPdfPages: 8,
+    });
+    expect(readUploadConfig({ UPLOAD_MAX_BYTES: '0', PDF_MAX_PAGES: 'nope' })).toEqual({
+      maxBytes: DEFAULT_UPLOAD_MAX_BYTES,
+      maxPdfPages: DEFAULT_PDF_MAX_PAGES,
+    });
   });
 });

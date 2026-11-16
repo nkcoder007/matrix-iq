@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { KnowledgeDocument } from '../../types';
 import { useKnowledge } from '../../store/KnowledgeContext';
 import { projectPath } from '../../lib/paths';
+import { ApiError } from '../../services/api';
 import { Icon } from '../icons';
 import { Dialog } from '../ui/Dialog';
 
@@ -13,10 +14,12 @@ export function SourceActions({ document }: { document: KnowledgeDocument }) {
   const [mode, setMode] = useState<'rename' | 'delete' | null>(null);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
   const openRename = () => {
     setTitle(document.title);
+    setError(null);
     setMode('rename');
   };
 
@@ -29,11 +32,21 @@ export function SourceActions({ document }: { document: KnowledgeDocument }) {
 
   const confirmDelete = async () => {
     setBusy(true);
-    const deleted = await deleteDocument(document.id);
-    setBusy(false);
-    if (deleted) {
-      setMode(null);
-      navigate(projectPath(workspace.id, 'sources'));
+    setError(null);
+    try {
+      const deleted = await deleteDocument(document.id);
+      if (deleted) {
+        setMode(null);
+        navigate(projectPath(workspace.id, 'sources'));
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof ApiError
+          ? cause.message
+          : 'The source could not be deleted from the backend. It remains in this project.',
+      );
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -45,7 +58,10 @@ export function SourceActions({ document }: { document: KnowledgeDocument }) {
       <button
         type="button"
         className="btn btn--sm btn--ghost btn--danger"
-        onClick={() => setMode('delete')}
+        onClick={() => {
+          setError(null);
+          setMode('delete');
+        }}
       >
         Delete
       </button>
@@ -90,6 +106,12 @@ export function SourceActions({ document }: { document: KnowledgeDocument }) {
         description="The source and any ideas or connections that depend on it will be removed from this project."
         className="modal__dialog--danger"
       >
+        {error ? (
+          <div className="modal__note" role="alert">
+            <Icon name="alert" size={15} />
+            <span>{error}</span>
+          </div>
+        ) : null}
         <div className="modal__note">
           <Icon name="alert" size={15} />
           <span>This cannot be undone. Other sources are not affected.</span>

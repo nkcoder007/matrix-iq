@@ -74,6 +74,8 @@ export interface KnowledgeDocument {
   content?: string;
   /** Key used to retrieve the original uploaded file from IndexedDB. */
   fileKey?: string;
+  /** Backend project that temporarily holds this source in remote mode. */
+  remoteProjectId?: string;
   fileName?: string;
   mimeType?: string;
   fileSize?: number;

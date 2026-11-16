@@ -17,6 +17,32 @@ export interface PersistedSnapshot {
   prefs: GraphPreferences;
 }
 
+/**
+ * Remote sources belong to the active browser session, not the durable local
+ * snapshot. They live in sessionStorage with their project mapping; only
+ * local-mode sources are written to IndexedDB/localStorage.
+ */
+export function withoutRemoteSources(snapshot: PersistedSnapshot): PersistedSnapshot {
+  const remoteIds = new Set(
+    snapshot.state.documents
+      .filter((document) => Boolean(document.remoteProjectId))
+      .map((document) => document.id),
+  );
+  if (remoteIds.size === 0) return snapshot;
+
+  return {
+    ...snapshot,
+    state: {
+      ...snapshot.state,
+      documents: snapshot.state.documents.filter((document) => !remoteIds.has(document.id)),
+      workspaces: snapshot.state.workspaces.map((workspace) => ({
+        ...workspace,
+        documentIds: workspace.documentIds.filter((id) => !remoteIds.has(id)),
+      })),
+    },
+  };
+}
+
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -136,22 +162,25 @@ export async function loadPersistedSnapshot(): Promise<PersistedSnapshot | null>
     const result = await requestResult(
       transaction.objectStore(STATE_STORE).get(SNAPSHOT_KEY),
     );
-    return isPersistedSnapshot(result) ? result : readFallbackSnapshot();
+    const snapshot = isPersistedSnapshot(result) ? result : readFallbackSnapshot();
+    return snapshot ? withoutRemoteSources(snapshot) : null;
   } catch {
-    return readFallbackSnapshot();
+    const snapshot = readFallbackSnapshot();
+    return snapshot ? withoutRemoteSources(snapshot) : null;
   }
 }
 
 export async function savePersistedSnapshot(snapshot: PersistedSnapshot): Promise<void> {
+  const stored = withoutRemoteSources(snapshot);
   try {
     const database = await openDatabase();
     const transaction = database.transaction(STATE_STORE, 'readwrite');
-    transaction.objectStore(STATE_STORE).put(snapshot, SNAPSHOT_KEY);
+    transaction.objectStore(STATE_STORE).put(stored, SNAPSHOT_KEY);
     await transactionDone(transaction);
   } catch {
     // A small metadata-only fallback keeps projects alive if IndexedDB is blocked.
     try {
-      window.localStorage.setItem(FALLBACK_KEY, JSON.stringify(snapshot));
+      window.localStorage.setItem(FALLBACK_KEY, JSON.stringify(stored));
     } catch {
       throw new Error('Browser storage is unavailable or full.');
     }

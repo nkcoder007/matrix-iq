@@ -35,6 +35,18 @@ import type {
   Theme,
   Workspace,
 } from '../types';
+import { api, ApiError, backendConfig, subscribeToSessionChange } from '../services/api';
+import { deleteRemoteProject, ensureRemoteProject } from '../services/remoteProjects';
+import {
+  clearRemoteSession,
+  forgetRemoteDocument,
+  getRemoteDocuments,
+  hasRemoteSessionData,
+  localProjectIdForRemoteProject,
+  pruneRemoteSession,
+  rememberRemoteDocuments,
+  renameRemoteDocument,
+} from '../services/remoteSession';
 
 export interface NewWorkspaceInput {
   name: string;
@@ -91,6 +103,7 @@ interface KnowledgeValue {
   hasDemoSources: boolean;
   importDemoSources: () => boolean;
   addQueuedSources: (sources: QueuedSourceInput[]) => Promise<void>;
+  loadRemoteDocumentContent: (id: string) => Promise<void>;
   renameDocument: (id: string, title: string) => void;
   deleteDocument: (id: string) => Promise<boolean>;
 
@@ -133,6 +146,67 @@ function createSeedState(): KnowledgeState {
   };
 }
 
+function mergeRemoteDocuments(
+  state: KnowledgeState,
+  remoteDocuments: KnowledgeDocument[],
+): KnowledgeState {
+  if (remoteDocuments.length === 0) return state;
+
+  const byWorkspace = new Map<string, KnowledgeDocument[]>();
+  const mappedDocuments: KnowledgeDocument[] = [];
+  for (const document of remoteDocuments) {
+    if (!document.remoteProjectId) continue;
+    const workspaceId = localProjectIdForRemoteProject(document.remoteProjectId);
+    if (!workspaceId || !state.workspaces.some((workspace) => workspace.id === workspaceId)) {
+      continue;
+    }
+    mappedDocuments.push(document);
+    byWorkspace.set(workspaceId, [...(byWorkspace.get(workspaceId) ?? []), document]);
+  }
+  if (byWorkspace.size === 0) return state;
+
+  const remoteIds = new Set(mappedDocuments.map((document) => document.id));
+
+  return {
+    ...state,
+    documents: [
+      ...mappedDocuments,
+      ...state.documents.filter((document) => !remoteIds.has(document.id)),
+    ],
+    workspaces: state.workspaces.map((workspace) => {
+      const documents = byWorkspace.get(workspace.id);
+      if (!documents) return workspace;
+      const documentIds = documents.map((document) => document.id);
+      return {
+        ...workspace,
+        documentIds: [
+          ...new Set([
+            ...documentIds,
+            ...workspace.documentIds.filter((id) => !remoteIds.has(id)),
+          ]),
+        ],
+      };
+    }),
+  };
+}
+
+function removeRemoteDocuments(state: KnowledgeState): KnowledgeState {
+  const remoteIds = new Set(
+    state.documents
+      .filter((document) => Boolean(document.remoteProjectId))
+      .map((document) => document.id),
+  );
+  if (remoteIds.size === 0) return state;
+  return {
+    ...state,
+    documents: state.documents.filter((document) => !remoteIds.has(document.id)),
+    workspaces: state.workspaces.map((workspace) => ({
+      ...workspace,
+      documentIds: workspace.documentIds.filter((id) => !remoteIds.has(id)),
+    })),
+  };
+}
+
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<KnowledgeState>(createSeedState);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
@@ -143,30 +217,60 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
-    void loadPersistedSnapshot()
-      .then((snapshot) => {
-        if (cancelled || !snapshot) return;
-        const activeWorkspaceId = snapshot.state.workspaces.some(
-          (workspace) => workspace.id === snapshot.state.activeWorkspaceId,
-        )
-          ? snapshot.state.activeWorkspaceId
-          : snapshot.state.workspaces[0].id;
-        setState({ ...snapshot.state, activeWorkspaceId });
-        setDismissedIds(snapshot.dismissedIds);
-        setSavedConnectionIds(snapshot.savedConnectionIds);
-        setPrefs({ ...snapshot.prefs, theme: readStoredTheme() });
-      })
-      .catch(() => {
+    const hydrate = async () => {
+      try {
+        const snapshot = await loadPersistedSnapshot();
+        if (cancelled) return;
+
+        let nextState = createSeedState();
+        if (snapshot) {
+          const activeWorkspaceId = snapshot.state.workspaces.some(
+            (workspace) => workspace.id === snapshot.state.activeWorkspaceId,
+          )
+            ? snapshot.state.activeWorkspaceId
+            : snapshot.state.workspaces[0].id;
+          nextState = { ...snapshot.state, activeWorkspaceId };
+          setDismissedIds(snapshot.dismissedIds);
+          setSavedConnectionIds(snapshot.savedConnectionIds);
+          setPrefs({ ...snapshot.prefs, theme: readStoredTheme() });
+        }
+
+        if (backendConfig.configured) {
+          if (hasRemoteSessionData()) {
+            try {
+              const remoteProjects = await api.projects.list();
+              if (cancelled) return;
+              pruneRemoteSession(new Set(remoteProjects.map((project) => project.id)));
+            } catch {
+              if (cancelled) return;
+              clearRemoteSession();
+            }
+          }
+          nextState = mergeRemoteDocuments(nextState, getRemoteDocuments());
+        } else {
+          clearRemoteSession();
+        }
+
+        if (!cancelled) setState(nextState);
+      } catch {
         if (!cancelled) {
           setStorageError('Saved work could not be loaded. This session is using the demo data.');
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setReady(true);
-      });
+      }
+    };
+    void hydrate();
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    return subscribeToSessionChange(() => {
+      clearRemoteSession();
+      setState((current) => removeRemoteDocuments(current));
+    });
   }, []);
 
   useEffect(() => {
@@ -309,7 +413,20 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       setSavedConnectionIds((current) =>
         current.filter((edgeId) => next.connections.some((edge) => edge.id === edgeId)),
       );
+      for (const documentId of target.documentIds) {
+        const document = state.documents.find((item) => item.id === documentId);
+        if (document?.remoteProjectId) forgetRemoteDocument(documentId);
+      }
       await Promise.all(target.documentIds.map((documentId) => deleteSourceFile(documentId)));
+      if (backendConfig.configured) {
+        try {
+          await deleteRemoteProject(id);
+        } catch {
+          setStorageError(
+            'The project was removed here, but its temporary backend copy could not be removed. It will expire with the server session.',
+          );
+        }
+      }
       return true;
     },
     [state],
@@ -340,6 +457,44 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const addQueuedSources = useCallback(
     async (sources: QueuedSourceInput[]) => {
       if (sources.length === 0) return;
+
+      if (backendConfig.configured) {
+        const remoteProjectId = await ensureRemoteProject(workspace);
+        const uploaded = await Promise.all(
+          sources.map((source) =>
+            api.sources.upload(remoteProjectId, {
+              file: source.file,
+              fileName: source.fileName,
+              content: source.file ? undefined : source.content,
+              title: source.title,
+            }),
+          ),
+        );
+        const remoteDocuments: KnowledgeDocument[] = uploaded.map((document) => ({
+          ...document,
+          remoteProjectId,
+          status: document.status === 'queued' ? 'queued' : 'extracted',
+        }));
+        rememberRemoteDocuments(remoteProjectId, remoteDocuments);
+
+        setState((current) => ({
+          ...current,
+          documents: [...remoteDocuments, ...current.documents],
+          workspaces: current.workspaces.map((item) =>
+            item.id === workspace.id
+              ? {
+                  ...item,
+                  documentIds: [
+                    ...remoteDocuments.map((document) => document.id),
+                    ...item.documentIds,
+                  ],
+                }
+              : item,
+          ),
+        }));
+        return;
+      }
+
       const stamp = Date.now();
       const queued: KnowledgeDocument[] = sources.map((source, index) => ({
         id: `doc-${stamp}-${index}`,
@@ -386,16 +541,58 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         ),
       }));
     },
-    [workspace.id],
+    [workspace],
   );
 
   const renameDocument = useCallback((id: string, title: string) => {
+    renameRemoteDocument(id, title);
     setState((current) => renameDocumentInState(current, id, title));
   }, []);
 
+  const loadRemoteDocumentContent = useCallback(
+    async (id: string) => {
+      const document = state.documents.find((item) => item.id === id);
+      if (!document?.remoteProjectId || document.content || !backendConfig.configured) return;
+      const remoteProjectId = document.remoteProjectId;
+
+      try {
+        const remote = await api.sources.get(remoteProjectId, id);
+        if (remote.content === undefined) return;
+        setState((current) => ({
+          ...current,
+          documents: current.documents.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  content: remote.content,
+                  excerpt: remote.excerpt,
+                  summary: remote.summary,
+                  words: remote.words,
+                  pages: remote.pages,
+                  status: remote.status === 'queued' ? 'queued' : 'extracted',
+                }
+              : item,
+          ),
+        }));
+      } catch {
+        // Keep the session-scoped metadata visible if the temporary backend session expired.
+      }
+    },
+    [state.documents],
+  );
+
   const deleteDocument = useCallback(
     async (id: string): Promise<boolean> => {
-      if (!state.documents.some((document) => document.id === id)) return false;
+      const document = state.documents.find((item) => item.id === id);
+      if (!document) return false;
+      if (document.remoteProjectId && backendConfig.configured) {
+        try {
+          await api.sources.remove(document.remoteProjectId, id);
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 404) throw error;
+        }
+      }
+      if (document.remoteProjectId) forgetRemoteDocument(id);
       const next = removeDocumentFromState(state, id);
       setState(next);
       setDismissedIds((current) =>
@@ -500,6 +697,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     hasDemoSources,
     importDemoSources,
     addQueuedSources,
+    loadRemoteDocumentContent,
     renameDocument,
     deleteDocument,
     storageError,

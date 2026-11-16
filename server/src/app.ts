@@ -5,8 +5,10 @@ import { HTTPException } from 'hono/http-exception';
 import type { SessionData, SessionStore } from './types';
 import { sessionStore as defaultSessionStore } from './services/sessionStore';
 import { createSessionMiddleware } from './middleware/session';
-import { readCorsOrigins } from './config';
+import { readCorsOrigins, readUploadConfig } from './config';
+import type { UploadConfig } from './config';
 import projectsRoute from './routes/projects';
+import { createSourcesRoute } from './routes/sources';
 
 export type Env = {
   Variables: {
@@ -18,11 +20,13 @@ export type Env = {
 export interface CreateAppOptions {
   store?: SessionStore;
   corsOrigins?: string[];
+  uploadConfig?: UploadConfig;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
   const store = options.store ?? defaultSessionStore;
   const corsOrigins = options.corsOrigins ?? readCorsOrigins();
+  const uploadConfig = options.uploadConfig ?? readUploadConfig();
   const app = new Hono<Env>();
 
   app.use('*', logger());
@@ -54,6 +58,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   // Mount feature routes.
   app.route('/projects', projectsRoute);
+  app.route('/projects', createSourcesRoute(uploadConfig));
 
   // 404 handler.
   app.notFound((c) => {

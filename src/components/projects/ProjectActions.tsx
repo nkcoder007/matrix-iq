@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKnowledge } from '../../store/KnowledgeContext';
+import { backendConfig } from '../../services/api';
 import { Icon } from '../icons';
 import { Dialog } from '../ui/Dialog';
 
@@ -105,7 +106,11 @@ export function ProjectActions() {
         onClose={() => setMode(null)}
         eyebrow="Delete project"
         title={`Delete “${workspace.name}”?`}
-        description="Every source, idea, connection and insight that belongs to this project will be removed from this browser."
+        description={
+          backendConfig.configured
+            ? 'Every source, idea, connection and insight that belongs to this project will be removed from this browser and its temporary backend session.'
+            : 'Every source, idea, connection and insight that belongs to this project will be removed from this browser.'
+        }
         className="modal__dialog--danger"
       >
         <div className="modal__note">
