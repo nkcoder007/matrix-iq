@@ -27,6 +27,8 @@ export const backendConfig: BackendConfig = {
   configured: requestedMode === 'remote' && Boolean(requestedBaseUrl),
 };
 
+export const SESSION_STORAGE_KEY = 'matrixiq-session-id';
+
 export class ApiError extends Error {
   status: number;
 
@@ -67,26 +69,59 @@ export interface SourceAnalysis {
   updatedAt: string;
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!backendConfig.configured) {
-    throw new ApiError(
-      'The backend is not configured. Set VITE_API_MODE=remote and VITE_API_BASE_URL.',
-      0,
-    );
+let memorySessionId: string | null = null;
+let pendingSession: Promise<string> | null = null;
+let ignoredSessionId: string | null = null;
+
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return typeof globalThis.sessionStorage === 'undefined' ? null : globalThis.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function storedSessionId(): string | null {
+  if (memorySessionId) return memorySessionId;
+  try {
+    const stored = sessionStorageOrNull()?.getItem(SESSION_STORAGE_KEY)?.trim();
+    return stored && stored !== ignoredSessionId ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberSessionId(sessionId: string): void {
+  memorySessionId = sessionId;
+  ignoredSessionId = null;
+  try {
+    sessionStorageOrNull()?.setItem(SESSION_STORAGE_KEY, sessionId);
+  } catch {
+    // Private browsing can block storage; the in-memory fallback still works
+    // for this page load.
+  }
+}
+
+function forgetSessionId(sessionId: string): void {
+  const memoryMatches = memorySessionId === sessionId;
+  let storageMatches = false;
+
+  try {
+    const storage = sessionStorageOrNull();
+    if (storage?.getItem(SESSION_STORAGE_KEY) === sessionId) {
+      storageMatches = true;
+      storage.removeItem(SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // The in-memory guard below still prevents reuse for this page load.
   }
 
-  const headers = new Headers(init.headers);
-  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
+  if (!memoryMatches && !storageMatches) return;
+  if (memoryMatches) memorySessionId = null;
+  ignoredSessionId = sessionId;
+}
 
-  const response = await fetch(`${backendConfig.baseUrl}${path}`, {
-    ...init,
-    headers,
-    // Authentication is deliberately not implemented in this frontend build.
-    credentials: 'same-origin',
-  });
-
+async function parseResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
   let payload: unknown;
   try {
@@ -109,12 +144,95 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+async function createSession(): Promise<string> {
+  const response = await fetch(`${backendConfig.baseUrl}/session`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    cache: 'no-store',
+  });
+  const payload = await parseResponse<{ sessionId?: unknown }>(response);
+
+  if (typeof payload?.sessionId !== 'string' || payload.sessionId.trim() === '') {
+    throw new ApiError('The backend did not return a valid session ID.', response.status);
+  }
+
+  const sessionId = payload.sessionId.trim();
+  rememberSessionId(sessionId);
+  return sessionId;
+}
+
+async function ensureSessionId(): Promise<string> {
+  const existing = storedSessionId();
+  if (existing) return existing;
+
+  if (!pendingSession) {
+    pendingSession = createSession().finally(() => {
+      pendingSession = null;
+    });
+  }
+
+  return pendingSession;
+}
+
+interface RequestOptions {
+  /** Public endpoints such as /health must not bootstrap a session. */
+  authenticated?: boolean;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  options: RequestOptions = {},
+): Promise<T> {
+  if (!backendConfig.configured) {
+    throw new ApiError(
+      'The backend is not configured. Set VITE_API_MODE=remote and VITE_API_BASE_URL.',
+      0,
+    );
+  }
+
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  let managedSessionId: string | null = null;
+  if (options.authenticated !== false && !headers.has('X-Session-ID')) {
+    managedSessionId = await ensureSessionId();
+    headers.set('X-Session-ID', managedSessionId);
+  }
+
+  const send = () =>
+    fetch(`${backendConfig.baseUrl}${path}`, {
+      ...init,
+      headers,
+      credentials: 'same-origin',
+    });
+
+  let response = await send();
+
+  // A managed session can expire while the tab stays open. Invalidate it,
+  // bootstrap once, and retry the same request once. If the retry is also
+  // rejected, surface the 401 instead of looping.
+  if (response.status === 401 && managedSessionId) {
+    forgetSessionId(managedSessionId);
+    const refreshedSessionId = await ensureSessionId();
+    headers.set('X-Session-ID', refreshedSessionId);
+    response = await send();
+
+    if (response.status === 401) {
+      forgetSessionId(refreshedSessionId);
+    }
+  }
+
+  return parseResponse<T>(response);
+}
+
 /**
- * Contract for the future backend. These methods are intentionally unused by
- * the UI until a backend exists; screens read local IndexedDB state instead.
+ * Contract for the backend. The UI still reads and writes local IndexedDB
+ * state; these methods are the integration seam for remote-backed screens.
  */
 export const api = {
-  health: () => request<{ ok: boolean }>('/health'),
+  health: () => request<{ ok: boolean }>('/health', {}, { authenticated: false }),
 
   projects: {
     list: () => request<Workspace[]>('/projects'),

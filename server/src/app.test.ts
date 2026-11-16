@@ -1,38 +1,26 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createApp } from './app';
-import { sessionStore } from './services/sessionStore';
+import { MemorySessionStore } from './services/sessionStore';
 
-// Reduce TTL for tests so expiration is fast.
-const ORIGINAL_TTL = process.env.SESSION_TTL_MS;
+type TestApp = ReturnType<typeof createApp>['app'];
 
-function resetStore() {
-  // Clear all sessions by sweeping with age 0 (reap everything).
-  sessionStore.sweep(0);
+function testApp(ttlMs = 30 * 60 * 1000) {
+  const store = new MemorySessionStore({ ttlMs, sweepMs: 1000, autoSweep: false });
+  const { app } = createApp({ store, corsOrigins: [] });
+  return { app, store };
 }
 
-beforeEach(() => {
-  resetStore();
-  process.env.SESSION_TTL_MS = '100'; // 100ms TTL for fast expiry tests
-});
-
-afterEach(() => {
-  resetStore();
-  if (ORIGINAL_TTL !== undefined) {
-    process.env.SESSION_TTL_MS = ORIGINAL_TTL;
-  } else {
-    delete process.env.SESSION_TTL_MS;
-  }
-});
-
-const { app } = createApp();
-
-async function request(method: string, path: string, headers: Record<string, string> = {}, body?: unknown) {
+async function request(
+  app: TestApp,
+  method: string,
+  path: string,
+  headers: Record<string, string> = {},
+  body?: unknown,
+) {
   const init: RequestInit = { method, headers };
   if (body !== undefined) {
     init.body = JSON.stringify(body);
     init.headers = { 'Content-Type': 'application/json', ...headers };
-  } else {
-    init.headers = headers;
   }
   const res = await app.fetch(new Request(`http://localhost${path}`, init));
   const text = await res.text();
@@ -48,80 +36,106 @@ async function request(method: string, path: string, headers: Record<string, str
 describe('Phase 0 — Backend Foundation', () => {
   describe('GET /health', () => {
     it('returns ok: true and session count', async () => {
-      const { status, json } = await request('GET', '/health');
+      const { app } = testApp();
+      const { status, json } = await request(app, 'GET', '/health');
       expect(status).toBe(200);
-      expect(json).toMatchObject({ ok: true });
-      expect(typeof (json as { sessions?: number })?.sessions).toBe('number');
+      expect(json).toMatchObject({ ok: true, sessions: 0 });
     });
   });
 
   describe('Session middleware (X-Session-ID)', () => {
     it('rejects requests without X-Session-ID header', async () => {
-      const { status, json } = await request('GET', '/projects');
+      const { app } = testApp();
+      const { status, json } = await request(app, 'GET', '/projects');
       expect(status).toBe(401);
       expect(typeof (json as { message?: string })?.message).toBe('string');
     });
 
-    it('rejects requests with empty X-Session-ID header', async () => {
-      const { status } = await request('GET', '/projects', {
+    it('rejects requests with an empty X-Session-ID header', async () => {
+      const { app } = testApp();
+      const { status } = await request(app, 'GET', '/projects', {
         'X-Session-ID': '',
       });
       expect(status).toBe(401);
     });
 
-    it('rejects requests with an expired/unknown session', async () => {
-      const { status, json } = await request('GET', '/projects', {
+    it('rejects requests with a blank X-Session-ID header', async () => {
+      const { app } = testApp();
+      const { status } = await request(app, 'GET', '/projects', {
+        'X-Session-ID': '   ',
+      });
+      expect(status).toBe(401);
+    });
+
+    it('rejects requests with an unknown session', async () => {
+      const { app } = testApp();
+      const { status, json } = await request(app, 'GET', '/projects', {
         'X-Session-ID': 'nonexistent-session-id',
       });
       expect(status).toBe(401);
       expect((json as { message?: string })?.message).toContain('Session');
     });
 
-    it('allows requests with a valid session for existing routes (200 not 401)', async () => {
+    it('allows requests with a valid session', async () => {
+      const { app, store } = testApp();
       const sid = crypto.randomUUID();
-      sessionStore.create(sid);
-      const { status } = await request('GET', '/projects', {
+      store.create(sid);
+      const { status } = await request(app, 'GET', '/projects', {
         'X-Session-ID': sid,
       });
-      // Route is now mounted → 200 with empty list, session validation passed (not 401)
       expect(status).toBe(200);
     });
 
     it('touches session on access (updates lastAccessed)', async () => {
+      const { app, store } = testApp();
       const sid = crypto.randomUUID();
-      const session = sessionStore.create(sid);
+      const session = store.create(sid);
       const originalLastAccessed = session.lastAccessed;
-      // Wait a tiny bit to ensure timestamp changes.
-      await new Promise((r) => setTimeout(r, 10));
-      await request('GET', '/projects', { 'X-Session-ID': sid });
-      const touched = sessionStore.get(sid);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await request(app, 'GET', '/projects', { 'X-Session-ID': sid });
+      const touched = store.get(sid);
       expect(touched?.lastAccessed).toBeGreaterThanOrEqual(originalLastAccessed);
+    });
+
+    it('rejects an expired session immediately on access', async () => {
+      const { app, store } = testApp(100);
+      const sid = crypto.randomUUID();
+      const session = store.create(sid);
+      session.lastAccessed = Date.now() - 101;
+
+      const { status, json } = await request(app, 'GET', '/projects', {
+        'X-Session-ID': sid,
+      });
+      expect(status).toBe(401);
+      expect((json as { message?: string })?.message).toContain('expired');
+      expect(store.size()).toBe(0);
     });
   });
 
   describe('Session store TTL', () => {
-    it('reaps expired sessions on sweep', async () => {
+    it('reaps expired sessions on sweep', () => {
+      const { store } = testApp();
       const sid = crypto.randomUUID();
-      sessionStore.create(sid);
-      expect(sessionStore.size()).toBe(1);
+      store.create(sid);
+      expect(store.size()).toBe(1);
 
-      // Manually age the session beyond TTL.
-      const session = sessionStore.get(sid);
+      const session = store.get(sid);
       if (session) {
-        session.lastAccessed = Date.now() - 10000; // 10s ago
+        session.lastAccessed = Date.now() - 10000;
       }
 
-      const reaped = sessionStore.sweep(100); // 100ms max age
+      const reaped = store.sweep(100);
       expect(reaped).toBe(1);
-      expect(sessionStore.size()).toBe(0);
+      expect(store.size()).toBe(0);
     });
 
-    it('keeps recently accessed sessions', async () => {
+    it('keeps recently accessed sessions', () => {
+      const { store } = testApp();
       const sid = crypto.randomUUID();
-      sessionStore.create(sid);
-      const reaped = sessionStore.sweep(100000); // 100s max age
+      store.create(sid);
+      const reaped = store.sweep(100000);
       expect(reaped).toBe(0);
-      expect(sessionStore.size()).toBe(1);
+      expect(store.size()).toBe(1);
     });
   });
 });

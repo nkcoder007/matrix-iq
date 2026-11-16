@@ -1,8 +1,8 @@
 # MatrixIQ — knowledge, connected
 
-A frontend-first personal knowledge graph. Add sources to a project, keep their original text or
-file in the browser, and explore seeded concepts and connections across documents that look
-unrelated.
+A local-first personal knowledge graph with a session-scoped Hono backend. Add sources to a
+project, keep their original text or file in the browser, and explore seeded concepts and
+connections across documents that look unrelated.
 
 The app opens on a home page that explains the idea and lists projects. A project workspace holds
 its own sources, graph, insights and saved links; sources never move between projects.
@@ -22,11 +22,12 @@ projects, with or without the sample sources.
 | Styling | **Hand-written CSS** with design tokens | No style runtime; one token file drives the system. |
 | Graph | **Custom SVG + a deterministic layout function** | Full control over labels, arrows and interaction. |
 | Local state | **IndexedDB + localStorage fallback** | Projects and source content survive reloads without a server. |
+| Backend | **Hono 4 + Node.js + TypeScript** | Session-scoped project API with in-memory state. |
 | Icons | Inline SVG components | Small bundle, consistent icon set. |
-| Tests | **Vitest** | Focused tests for state cleanup, search and insight helpers. |
+| Tests | **Vitest** | Frontend state helpers plus backend session and project API tests. |
 
-No UI kit, chart library, CSS framework, state-management package or backend SDK. Runtime
-dependencies are React, React DOM and React Router.
+No UI kit, chart library, CSS framework or state-management package. Frontend runtime
+dependencies are React, React DOM and React Router; the backend uses Hono and Node.js.
 
 ## Getting started
 
@@ -39,6 +40,20 @@ npm run preview  # serve the production build
 ```
 
 Node 20+ is recommended.
+
+The backend has its own package and dependencies:
+
+```bash
+cd server
+npm install
+cp .env.example .env
+npm run dev      # http://localhost:8787
+npm test
+npm run typecheck
+```
+
+The frontend proxy uses `VITE_API_PROXY_TARGET=http://localhost:8787`; see
+`src/services/api.ts` for the client contract.
 
 ## Navigation
 
@@ -60,7 +75,9 @@ redirect into the active project so bookmarks keep working.
 
 ## Local persistence
 
-There is no server, account or database. The app keeps its working state in the browser:
+The app keeps its working state in the browser, and **local mode is the default**. The backend
+currently stores only in-memory, session-scoped project data and is not yet used by the UI screens.
+There is no account, database or permanent server storage.
 
 - **IndexedDB** stores the complete workspace snapshot and original uploaded files separately.
 - **localStorage** stores the light/dark preference and acts as a metadata-only fallback for the
@@ -144,15 +161,17 @@ graph, which continued to show all links at every value.
 
 ## Backend integration seam
 
-The frontend is prepared for a future backend but does **not** implement one. No analysis, AI,
-authentication, database server or sync exists.
+The repository contains the Phase 0–1.1 backend: Hono on Node.js with in-memory sessions and
+session-scoped project CRUD/cascade deletion. There is no authentication, database, permanent
+storage, source upload or analysis yet. The UI still reads and writes its local IndexedDB state;
+the typed API client is the integration seam for later phases.
 
-Copy `.env.example` to `.env` when configuring one:
+Frontend configuration (copy `.env.example` to `.env`):
 
 ```bash
 VITE_API_MODE=local                 # default: no network calls
 # VITE_API_MODE=remote
-# VITE_API_BASE_URL=https://api.example.com/api
+# VITE_API_BASE_URL=http://localhost:8787
 # VITE_API_PROXY_TARGET=http://localhost:8787
 ```
 
@@ -162,15 +181,32 @@ VITE_API_MODE=local                 # default: no network calls
   to the backend through Vite.
 - The typed client lives in `src/services/api.ts`. It throws a clear configuration error instead of
   calling a half-configured backend.
-- No component calls the client yet; this build must remain useful offline until a backend exists.
-- Authentication headers are not implemented. When auth lands, add it at the client boundary rather
-  than embedding tokens in components.
+- On the first protected request, the client calls `POST /session`, stores the returned session ID
+  in `sessionStorage`, and attaches it as `X-Session-ID`. Concurrent initialization calls share one
+  bootstrap request, and reloads reuse the stored ID. If a stored session gets a `401`, the client
+  removes it, bootstraps a replacement, and retries the original request once; a second `401` is
+  returned to the caller without looping. `POST /session` and `GET /health` require no session.
+- No component calls the client yet; the UI remains useful offline in local mode.
+- Authentication is not implemented. The session ID is an anonymous in-memory scope, not a login.
+
+Backend configuration (copy `server/.env.example` to `server/.env`):
+
+```bash
+PORT=8787
+SESSION_TTL_MS=1800000       # 30 minutes of inactivity
+SESSION_SWEEP_MS=300000      # reap expired sessions every 5 minutes
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+```
+
+Expired sessions are rejected on access as well as by the periodic sweep. All state is in memory
+and disappears when the backend process exits.
 
 Expected contract (relative to the base URL):
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Readiness check |
+| `POST` | `/session` | Create an in-memory session and return `{ sessionId }` |
 | `GET` | `/projects` | List projects |
 | `POST` | `/projects` | Create a project |
 | `GET` | `/projects/:id` | Read a project |
@@ -185,8 +221,8 @@ Expected contract (relative to the base URL):
 | `POST` | `/projects/:id/sources/:sourceId/analyze` | Queue analysis |
 | `GET` | `/projects/:id/sources/:sourceId/analysis` | Poll analysis status |
 
-The backend should consume either `content` or the uploaded file, return extracted concepts and
-connections, and update queued sources. The frontend already keeps both locally.
+Project CRUD and cascade deletion are implemented. Source, graph, insight and analysis endpoints
+remain part of the future contract and are not implemented yet.
 
 ## Project structure
 
@@ -225,6 +261,20 @@ src/
 └─ main.tsx         Entry point
 ```
 
+```
+server/
+├─ src/
+│  ├─ app.ts                 Hono app, public session route, CORS, errors
+│  ├─ config.ts              Session timing and CORS environment config
+│  ├─ index.ts               Node server entry point
+│  ├─ middleware/session.ts  X-Session-ID validation and expiry checks
+│  ├─ routes/projects.ts     Project CRUD and cascade deletion
+│  ├─ services/sessionStore.ts  In-memory TTL session store
+│  └─ types.ts               Backend domain and session types
+├─ tsconfig.json
+└─ vitest.config.ts
+```
+
 ## Design notes
 
 `src/styles/tokens.css` holds the visual system: colour ramps, surface levels, cluster accents,
@@ -247,7 +297,8 @@ aggregation independent of React and covered by tests.
 
 ## Scope and limitations
 
-- Frontend only: no authentication, server database, file analysis or AI generation.
+- The UI is still local-first; backend project routes are implemented, but no screen calls them yet.
+- No authentication, user accounts, server database, permanent storage, source upload or AI analysis.
 - Only the bundled sample corpus has extracted concepts and insights; new sources stay queued.
 - PDF text is not extracted. Original files are stored for a future backend.
 - "Broader Insights" is a digest of existing findings, not new model-generated synthesis.

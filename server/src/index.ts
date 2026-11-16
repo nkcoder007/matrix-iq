@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createApp } from './app';
 import { serve } from '@hono/node-server';
 
@@ -11,6 +12,7 @@ serve({
 }, (info) => {
   console.log(`MatrixIQ backend listening on http://localhost:${info.port}`);
   console.log(`Session TTL: ${process.env.SESSION_TTL_MS ?? '1800000'}ms`);
+  console.log(`Session sweep: ${process.env.SESSION_SWEEP_MS ?? '300000'}ms`);
 });
 
 // Graceful shutdown: stop the session sweep timer.

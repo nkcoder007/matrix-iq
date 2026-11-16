@@ -7,6 +7,7 @@ import type {
   Concept,
   Connection,
   Insight,
+  SessionData,
 } from '../types';
 
 const projects = new Hono<Env>();
@@ -31,6 +32,19 @@ function generateColor(name: string): string {
 
 function nowIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+type ProjectResponse = Omit<Workspace, 'sessionId'>;
+
+function toProjectResponse(workspace: Workspace): ProjectResponse {
+  return {
+    id: workspace.id,
+    name: workspace.name,
+    description: workspace.description,
+    color: workspace.color,
+    createdAt: workspace.createdAt,
+    documentIds: workspace.documentIds,
+  };
 }
 
 function validateCreate(body: unknown): { name: string; description: string } {
@@ -101,7 +115,7 @@ function findWorkspace(sessionId: string, sessionWorkspaces: Workspace[], id: st
   return workspace;
 }
 
-function cascadeDeleteProject(session: any, workspace: Workspace): void {
+function cascadeDeleteProject(session: SessionData, workspace: Workspace): void {
   // Collect document IDs from both workspace.documentIds and any documents
   // in the session that reference this workspace (defensive: workspace.documentIds
   // should be authoritative, but we also scan session.documents for robustness).
@@ -137,11 +151,6 @@ function cascadeDeleteProject(session: any, workspace: Workspace): void {
       !insight.conceptIds.some((cid) => removedConceptIds.has(cid)),
   );
 
-  session.activeInsights = session.activeInsights.filter(
-    (insight: Insight) =>
-      !insight.conceptIds.some((cid) => removedConceptIds.has(cid)),
-  );
-
   session.dismissedIds = session.dismissedIds.filter(
     (iid: string) => session.insights.some((i: Insight) => i.id === iid),
   );
@@ -158,14 +167,7 @@ function cascadeDeleteProject(session: any, workspace: Workspace): void {
 /** GET /projects — list all projects belonging to the current session. */
 projects.get('/', (c) => {
   const session = c.get('session');
-  const workspaces = session.workspaces.map((w) => ({
-    id: w.id,
-    name: w.name,
-    description: w.description,
-    color: w.color,
-    createdAt: w.createdAt,
-    documentIds: w.documentIds,
-  }));
+  const workspaces = session.workspaces.map(toProjectResponse);
   return c.json(workspaces);
 });
 
@@ -204,7 +206,7 @@ projects.post('/', async (c) => {
     session.activeWorkspaceId = id;
   }
 
-  return c.json(workspace, 201);
+  return c.json(toProjectResponse(workspace), 201);
 });
 
 /** GET /projects/:id — retrieve a specific project. */
@@ -213,7 +215,7 @@ projects.get('/:id', (c) => {
   const sessionId = c.get('sessionId');
   const id = c.req.param('id');
   const workspace = findWorkspace(sessionId, session.workspaces, id);
-  return c.json(workspace);
+  return c.json(toProjectResponse(workspace));
 });
 
 /** PATCH /projects/:id — update project information. */
@@ -221,7 +223,7 @@ projects.patch('/:id', async (c) => {
   const session = c.get('session');
   const sessionId = c.get('sessionId');
   const id = c.req.param('id');
-  findWorkspace(sessionId, session.workspaces, id);
+  const existing = findWorkspace(sessionId, session.workspaces, id);
 
   let body: unknown;
   try {
@@ -238,10 +240,10 @@ projects.patch('/:id', async (c) => {
   }
 
   const index = session.workspaces.findIndex((w) => w.id === id);
-  const workspace = { ...session.workspaces[index], ...input };
+  const workspace = { ...existing, ...input };
   session.workspaces[index] = workspace;
 
-  return c.json(workspace);
+  return c.json(toProjectResponse(workspace));
 });
 
 /** DELETE /projects/:id — delete a project and all its associated data. */

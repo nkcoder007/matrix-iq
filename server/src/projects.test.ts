@@ -1,28 +1,11 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { createApp } from './app';
-import { sessionStore } from './services/sessionStore';
+import { MemorySessionStore } from './services/sessionStore';
 
-const ORIGINAL_TTL = process.env.SESSION_TTL_MS;
+type TestApp = ReturnType<typeof createApp>['app'];
 
-function resetStore() {
-  sessionStore.sweep(0);
-}
-
-beforeEach(() => {
-  resetStore();
-  process.env.SESSION_TTL_MS = '1800000';
-});
-
-afterEach(() => {
-  resetStore();
-  if (ORIGINAL_TTL !== undefined) {
-    process.env.SESSION_TTL_MS = ORIGINAL_TTL;
-  } else {
-    delete process.env.SESSION_TTL_MS;
-  }
-});
-
-const { app } = createApp();
+let app: TestApp;
+let store: MemorySessionStore;
 
 async function request(
   method: string,
@@ -52,9 +35,10 @@ describe('Phase 1 — Project Management', () => {
   const sidB = 'session-b';
 
   beforeEach(() => {
-    resetStore();
-    sessionStore.create(sidA);
-    sessionStore.create(sidB);
+    store = new MemorySessionStore({ ttlMs: 30 * 60 * 1000, sweepMs: 1000, autoSweep: false });
+    ({ app } = createApp({ store, corsOrigins: [] }));
+    store.create(sidA);
+    store.create(sidB);
   });
   describe('POST /projects — create', () => {
     it('creates a project with name and description', async () => {
@@ -69,7 +53,7 @@ describe('Phase 1 — Project Management', () => {
       expect((json as { color?: string }).color).toBeDefined();
       expect((json as { createdAt?: string }).createdAt).toBeDefined();
       expect((json as { documentIds?: string[] }).documentIds).toEqual([]);
-      expect((json as { sessionId?: string }).sessionId).toBe(sidA);
+      expect(json).not.toHaveProperty('sessionId');
     });
 
     it('creates a project with empty description', async () => {
@@ -133,6 +117,7 @@ describe('Phase 1 — Project Management', () => {
       const projects = json as { name?: string }[];
       expect(projects).toHaveLength(1);
       expect(projects[0]?.name).toBe('Project A');
+      expect(projects[0]).not.toHaveProperty('sessionId');
     });
 
     it('returns multiple projects for the same session', async () => {
@@ -162,6 +147,7 @@ describe('Phase 1 — Project Management', () => {
       expect(status).toBe(200);
       expect((json as { id?: string }).id).toBe(projectId);
       expect((json as { name?: string }).name).toBe('Retrieve Me');
+      expect(json).not.toHaveProperty('sessionId');
     });
 
     it('returns 404 for nonexistent project', async () => {
@@ -201,6 +187,7 @@ describe('Phase 1 — Project Management', () => {
       expect(status).toBe(200);
       expect((json as { name?: string }).name).toBe('Updated');
       expect((json as { description?: string }).description).toBe('Updated desc');
+      expect(json).not.toHaveProperty('sessionId');
     });
 
     it('updates only name', async () => {
@@ -296,7 +283,7 @@ describe('Phase 1 — Project Management', () => {
       const pid = (projJson as { id?: string }).id as string;
 
       const docId = 'doc-1';
-      const session = sessionStore.get(sidA)!;
+      const session = store.get(sidA)!;
       session.documents.push({
         id: docId,
         sessionId: sidA,
@@ -361,12 +348,11 @@ describe('Phase 1 — Project Management', () => {
       const { status } = await request('DELETE', `/projects/${pid}`, sidA);
       expect(status).toBe(204);
 
-      const updated = sessionStore.get(sidA)!;
+      const updated = store.get(sidA)!;
       expect(updated.documents).toHaveLength(0);
       expect(updated.concepts).toHaveLength(0);
       expect(updated.connections).toHaveLength(0);
       expect(updated.insights).toHaveLength(0);
-      expect(updated.activeInsights).toHaveLength(0);
       expect(updated.analysisStatus.has(docId)).toBe(false);
       expect(updated.fileBuffers.has(docId)).toBe(false);
       expect(updated.workspaces).toHaveLength(0);
@@ -385,7 +371,7 @@ describe('Phase 1 — Project Management', () => {
       });
       const pidB = (projB as { id?: string }).id as string;
 
-      const session = sessionStore.get(sidA)!;
+      const session = store.get(sidA)!;
       session.documents.push({
         id: 'doc-a',
         sessionId: sidA,
@@ -418,7 +404,7 @@ describe('Phase 1 — Project Management', () => {
       expect((list as { id?: string }[])).toHaveLength(1);
       expect((list as { id?: string }[])[0]?.id).toBe(pidB);
 
-      const updated = sessionStore.get(sidA)!;
+      const updated = store.get(sidA)!;
       expect(updated.documents).toHaveLength(0);
       expect(updated.concepts).toHaveLength(0);
     });
@@ -432,7 +418,7 @@ describe('Phase 1 — Project Management', () => {
 
       await request('DELETE', `/projects/${id}`, sidA);
 
-      const session = sessionStore.get(sidA)!;
+      const session = store.get(sidA)!;
       expect(session.activeWorkspaceId).toBeNull();
     });
   });

@@ -134,7 +134,6 @@ export interface SessionData {
   concepts: Concept[];
   connections: Connection[];
   insights: Insight[];
-  activeInsights: Insight[];
   dismissedIds: string[];
   savedConnectionIds: string[];
   prefs: GraphPreferences;
@@ -150,6 +149,8 @@ export interface SessionStore {
   touch(sessionId: string): void;
   destroy(sessionId: string): void;
   sweep(maxAgeMs: number): number;
+  size(): number;
+  stopSweep(): void;
 }
 
 /* API response shapes matching src/services/api.ts */
