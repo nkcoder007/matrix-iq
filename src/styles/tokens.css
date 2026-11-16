@@ -1,0 +1,197 @@
+/* ==========================================================================
+   Design tokens — the single source of truth for the MatrixIQ design system.
+   Light surfaces, navy text and one restrained blue accent.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Typography ------------------------------------------------------------ */
+  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont,
+    'SF Pro Text', 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code',
+    Menlo, Consolas, monospace;
+
+  /* 12 / 13 / 14 / 16 / 17 / 18 / 24 / 30 / 34 / 36 */
+  --fs-2xs: 0.75rem;
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1rem;
+  --fs-md: 1.0625rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.5rem;
+  --fs-2xl: 1.875rem;
+  --fs-3xl: 2.125rem;
+  --fs-4xl: 2.25rem;
+
+  /* Surfaces -------------------------------------------------------------- */
+  --bg: #f6f7f9;
+  --bg-soft: #eef1f5;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eef2f7;
+  --surface-glass: rgba(255, 255, 255, 0.9);
+  --overlay: rgba(255, 255, 255, 0.82);
+  --brand-tile: linear-gradient(160deg, #eff5ff, #ffffff);
+  --avatar-from: #e2ecff;
+  --avatar-to: #c9dcff;
+  --avatar-text: #1d4ed8;
+  --inset-highlight: #ffffff;
+
+  /* Translucent neutral fills for quiet surfaces, hover states and insets. */
+  --tint-subtle: rgba(18, 35, 61, 0.025);
+  --tint-soft: rgba(18, 35, 61, 0.04);
+  --tint: rgba(18, 35, 61, 0.055);
+  --tint-strong: rgba(18, 35, 61, 0.09);
+
+  --line: rgba(18, 35, 61, 0.09);
+  --line-strong: rgba(18, 35, 61, 0.15);
+  --line-bright: rgba(18, 35, 61, 0.24);
+
+  --text: #12233d;
+  --text-2: #46556c;
+  --text-3: #6a788c;
+  --text-4: #8b97a8;
+
+  /* Accent ---------------------------------------------------------------- */
+  --accent: #2563eb;
+  --accent-bright: #3b82f6;
+  --accent-soft: rgba(37, 99, 235, 0.08);
+  --accent-line: rgba(37, 99, 235, 0.26);
+
+  /* Legacy accent aliases used throughout the stylesheets. */
+  --mint: var(--accent);
+  --mint-bright: var(--accent-bright);
+  --mint-soft: var(--accent-soft);
+  --mint-line: var(--accent-line);
+
+  --violet: #6d5bd0;
+  --violet-soft: rgba(109, 91, 208, 0.08);
+  --violet-line: rgba(109, 91, 208, 0.24);
+
+  --amber: #b7791f;
+  --amber-soft: rgba(183, 121, 31, 0.1);
+  --amber-line: rgba(183, 121, 31, 0.28);
+
+  --rose: #b8455f;
+  --rose-soft: rgba(184, 69, 95, 0.08);
+  --rose-line: rgba(184, 69, 95, 0.24);
+
+  --blue: #2563eb;
+  --blue-soft: rgba(37, 99, 235, 0.08);
+  --blue-line: rgba(37, 99, 235, 0.26);
+
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.08);
+
+  /* Cluster palette (used by graph + documents) --------------------------- */
+  --cluster-colonies: #b7791f;
+  --cluster-consensus: #2563eb;
+  --cluster-fermentation: #b8455f;
+  --cluster-resilience: #6d5bd0;
+
+  /* Shape ----------------------------------------------------------------- */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 22px;
+  --r-pill: 999px;
+
+  /* Space ----------------------------------------------------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+  --sp-10: 72px;
+
+  /* Elevation ------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(18, 35, 61, 0.06);
+  --shadow-md: 0 8px 24px -18px rgba(18, 35, 61, 0.24);
+  --shadow-lg: 0 28px 64px -38px rgba(18, 35, 61, 0.28);
+  --glow-mint: 0 8px 20px -12px rgba(37, 99, 235, 0.45);
+
+  /* Layout ---------------------------------------------------------------- */
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+  --content-max: 1280px;
+
+  /* Motion ---------------------------------------------------------------- */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 360ms;
+}
+
+/* Dark appearance ---------------------------------------------------------
+   Same token names, a deeper navy palette. Components stay theme-agnostic. */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --bg-soft: #0e1726;
+  --surface: #121c2c;
+  --surface-2: #162234;
+  --surface-3: #1c2a3e;
+  --surface-glass: rgba(14, 23, 37, 0.88);
+  --overlay: rgba(9, 15, 26, 0.8);
+  --brand-tile: linear-gradient(160deg, rgba(59, 130, 246, 0.22), rgba(18, 28, 44, 0.92));
+  --avatar-from: #1e3a8a;
+  --avatar-to: #172e5c;
+  --avatar-text: #dbeafe;
+  --inset-highlight: rgba(255, 255, 255, 0.05);
+
+  --tint-subtle: rgba(255, 255, 255, 0.035);
+  --tint-soft: rgba(255, 255, 255, 0.055);
+  --tint: rgba(255, 255, 255, 0.075);
+  --tint-strong: rgba(255, 255, 255, 0.11);
+
+  --line: rgba(226, 238, 255, 0.1);
+  --line-strong: rgba(226, 238, 255, 0.16);
+  --line-bright: rgba(226, 238, 255, 0.28);
+
+  --text: #edf3fb;
+  --text-2: #c3cedd;
+  --text-3: #94a3b8;
+  --text-4: #77869b;
+
+  --accent: #3b82f6;
+  --accent-bright: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, 0.12);
+  --accent-line: rgba(96, 165, 250, 0.32);
+
+  --violet: #a78bfa;
+  --violet-soft: rgba(167, 139, 250, 0.12);
+  --violet-line: rgba(167, 139, 250, 0.3);
+
+  --amber: #e0a84e;
+  --amber-soft: rgba(224, 168, 78, 0.12);
+  --amber-line: rgba(224, 168, 78, 0.3);
+
+  --rose: #f0788f;
+  --rose-soft: rgba(240, 120, 143, 0.12);
+  --rose-line: rgba(240, 120, 143, 0.3);
+
+  --blue: #60a5fa;
+  --blue-soft: rgba(96, 165, 250, 0.12);
+  --blue-line: rgba(96, 165, 250, 0.3);
+
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+
+  --cluster-colonies: #d9a44a;
+  --cluster-consensus: #5b8def;
+  --cluster-fermentation: #dc6d86;
+  --cluster-resilience: #9484ec;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 8px 24px -18px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 28px 64px -38px rgba(0, 0, 0, 0.72);
+  --glow-mint: 0 8px 20px -12px rgba(59, 130, 246, 0.55);
+}
