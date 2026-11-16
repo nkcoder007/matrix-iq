@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONCEPTS, CONNECTIONS, DOCUMENTS, INSIGHTS, WORKSPACES } from '../data/seed';
-import type { KnowledgeState } from '../types';
+import type { Concept, Connection, Insight, KnowledgeDocument, KnowledgeState } from '../types';
 import {
   removeDocumentFromState,
   removeWorkspaceFromState,
@@ -55,6 +55,82 @@ describe('removeDocumentFromState', () => {
       'doc-sleep',
       'doc-traffic',
     ]);
+  });
+
+  it('removes insight evidence and inferred records that a deleted source supported', () => {
+    const docA: KnowledgeDocument = {
+      ...DOCUMENTS[0],
+      id: 'doc-a',
+      conceptIds: ['concept-shared'],
+    };
+    const docB: KnowledgeDocument = {
+      ...DOCUMENTS[1],
+      id: 'doc-b',
+      conceptIds: ['concept-shared', 'concept-b'],
+    };
+    const shared: Concept = {
+      ...CONCEPTS[0],
+      id: 'concept-shared',
+      documentIds: ['doc-a', 'doc-b'],
+      mentions: 2,
+      evidence: [
+        { documentId: 'doc-a', excerpt: 'A quote' },
+        { documentId: 'doc-b', excerpt: 'B quote' },
+      ],
+    };
+    const onlyB: Concept = {
+      ...CONCEPTS[1],
+      id: 'concept-b',
+      documentIds: ['doc-b'],
+      mentions: 1,
+      evidence: [{ documentId: 'doc-b', excerpt: 'B quote' }],
+    };
+    const inferred: Connection = {
+      ...CONNECTIONS[0],
+      id: 'connection-inferred',
+      from: shared.id,
+      to: onlyB.id,
+      evidenceLevel: 'inference',
+      evidence: [
+        { documentId: 'doc-a', excerpt: 'A quote' },
+        { documentId: 'doc-b', excerpt: 'B quote' },
+      ],
+    };
+    const insight: Insight = {
+      ...INSIGHTS[0],
+      id: 'insight-pattern',
+      kind: 'pattern',
+      conceptIds: [shared.id, onlyB.id],
+      edgeId: inferred.id,
+      evidenceLevel: 'inference',
+      evidence: [
+        { documentId: 'doc-a', excerpt: 'A quote' },
+        { documentId: 'doc-b', excerpt: 'B quote' },
+      ],
+      documentIds: ['doc-a', 'doc-b'],
+    };
+    const state: KnowledgeState = {
+      ...seededState(),
+      workspaces: [
+        {
+          ...WORKSPACES[0],
+          documentIds: ['doc-a', 'doc-b'],
+        },
+      ],
+      documents: [docA, docB],
+      concepts: [shared, onlyB],
+      connections: [inferred],
+      insights: [insight],
+    };
+
+    const next = removeDocumentFromState(state, 'doc-a');
+
+    expect(next.concepts.map((concept) => concept.id)).toEqual(['concept-shared', 'concept-b']);
+    expect(next.concepts.find((concept) => concept.id === 'concept-shared')?.evidence).toEqual([
+      { documentId: 'doc-b', excerpt: 'B quote' },
+    ]);
+    expect(next.connections).toEqual([]);
+    expect(next.insights).toEqual([]);
   });
 });
 

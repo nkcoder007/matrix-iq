@@ -149,11 +149,16 @@ export function rememberRemoteDocuments(
     ...metadataOnly(document),
     remoteProjectId,
   }));
+  const incomingIds = new Set(prepared.map((document) => document.id));
   writeState({
     ...state,
     documents: [
       ...state.documents.filter((document) => document.remoteProjectId !== remoteProjectId),
       ...prepared,
+      ...state.documents.filter(
+        (document) =>
+          document.remoteProjectId === remoteProjectId && !incomingIds.has(document.id),
+      ),
     ],
   });
 }

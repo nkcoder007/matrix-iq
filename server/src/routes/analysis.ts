@@ -46,6 +46,27 @@ function sameDocumentSet(a: string[], b: string[]): boolean {
   return b.every((id) => left.has(id));
 }
 
+function projectAnalysisCounts(
+  session: SessionData,
+  workspace: Workspace,
+): { conceptCount: number; connectionCount: number; insightCount: number } {
+  const documentIds = new Set(workspace.documentIds);
+  const conceptIds = new Set(
+    session.concepts
+      .filter((concept) => concept.documentIds.some((id) => documentIds.has(id)))
+      .map((concept) => concept.id),
+  );
+  return {
+    conceptCount: conceptIds.size,
+    connectionCount: session.connections.filter(
+      (connection) => conceptIds.has(connection.from) && conceptIds.has(connection.to),
+    ).length,
+    insightCount: session.insights.filter((insight) =>
+      insight.conceptIds.some((id) => conceptIds.has(id)),
+    ).length,
+  };
+}
+
 function toStatusResponse(
   session: SessionData,
   workspace: Workspace,
@@ -53,15 +74,14 @@ function toStatusResponse(
   const record = session.projectAnalysis.get(workspace.id);
   const documentIds = workspace.documentIds;
   const currentDocumentCount = documentIds.length;
+  const counts = projectAnalysisCounts(session, workspace);
 
   if (!record) {
     return {
       projectId: workspace.id,
       status: 'idle',
       documentCount: currentDocumentCount,
-      conceptCount: 0,
-      connectionCount: 0,
-      insightCount: 0,
+      ...counts,
       updatedAt: now(),
     };
   }
@@ -75,9 +95,9 @@ function toStatusResponse(
     projectId: workspace.id,
     status,
     documentCount: currentDocumentCount,
-    conceptCount: record.conceptCount,
-    connectionCount: record.connectionCount,
-    insightCount: record.insightCount,
+    conceptCount: counts.conceptCount,
+    connectionCount: counts.connectionCount,
+    insightCount: counts.insightCount,
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     updatedAt: record.updatedAt,

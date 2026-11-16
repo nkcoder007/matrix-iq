@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PageHeader } from '../components/ui/PageHeader';
 import { InsightCard } from '../components/insights/InsightCard';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/icons';
+import { AnalysisNotice } from '../components/sources/AnalysisNotice';
 import { useKnowledge } from '../store/KnowledgeContext';
 import { projectPath } from '../lib/paths';
 import {
@@ -12,9 +13,19 @@ import {
 } from '../lib/insightCategories';
 
 export function InsightsPage() {
-  const { activeInsights, dismissedIds, dismissInsight, restoreInsights, workspace } =
-    useKnowledge();
+  const {
+    activeInsights,
+    dismissedIds,
+    dismissInsight,
+    restoreInsights,
+    workspace,
+    refreshAnalysis,
+  } = useKnowledge();
   const { category: categorySlug } = useParams();
+
+  useEffect(() => {
+    void refreshAnalysis();
+  }, [refreshAnalysis]);
 
   const category = categorySlug
     ? INSIGHT_CATEGORIES.find((item) => item.id === categorySlug)
@@ -50,6 +61,8 @@ export function InsightsPage() {
           description={`Every finding comes from the sources in ${workspace.name}. Broader Insights gathers the strongest finding from each category rather than claiming a new conclusion.`}
           actions={restoreAction}
         />
+
+        <AnalysisNotice />
 
         {activeInsights.length === 0 ? (
           <div className="card">
@@ -121,6 +134,8 @@ export function InsightsPage() {
         description={category.detail}
         actions={restoreAction}
       />
+
+      <AnalysisNotice />
 
       {category.id === 'broader-insights' && items.length > 0 ? (
         <p className="insight-detail__note">

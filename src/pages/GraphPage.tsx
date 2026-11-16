@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/ui/PageHeader';
 import { KnowledgeGraph } from '../components/graph/KnowledgeGraph';
 import { DetailPanel } from '../components/graph/DetailPanel';
+import { AnalysisNotice } from '../components/sources/AnalysisNotice';
 import { Icon } from '../components/icons';
 import { useKnowledge } from '../store/KnowledgeContext';
 import { RELATION_ORDER, RELATION_TYPES } from '../lib/relations';
@@ -15,7 +16,12 @@ export function GraphPage() {
     connections,
     conceptById,
     workspace,
+    refreshAnalysis,
   } = useKnowledge();
+
+  useEffect(() => {
+    void refreshAnalysis();
+  }, [refreshAnalysis]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -73,6 +79,8 @@ export function GraphPage() {
             : `Sources from ${workspace.name} will appear here once they have been analysed.`
         }
       />
+
+      <AnalysisNotice />
 
       {concepts.length > 0 ? (
       <div className="graph-toolbar">

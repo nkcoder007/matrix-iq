@@ -27,6 +27,47 @@ export function removeDocumentFromState(
     return [{ ...concept, documentIds, evidence, mentions: evidence.length }];
   });
 
+  const connections = state.connections.flatMap((connection) => {
+    if (removedConceptIds.has(connection.from) || removedConceptIds.has(connection.to)) {
+      return [];
+    }
+    if (!connection.evidence) return [connection];
+    const evidence = connection.evidence.filter(
+      (entry) => entry.documentId !== documentId,
+    );
+    if (evidence.length === 0) return [];
+    if (connection.evidenceLevel === 'inference' && evidence.length < 2) return [];
+    return [{ ...connection, evidence }];
+  });
+  const connectionIds = new Set(connections.map((connection) => connection.id));
+
+  const insights = state.insights.flatMap((insight) => {
+    if (insight.conceptIds.some((conceptId) => removedConceptIds.has(conceptId))) return [];
+    if (!insight.evidence) return [insight];
+
+    const evidence = insight.evidence.filter((entry) => entry.documentId !== documentId);
+    if (evidence.length === 0) return [];
+    if (insight.evidenceLevel === 'inference' && evidence.length < 2) return [];
+
+    const documentIds = [...new Set(evidence.map((entry) => entry.documentId))];
+    if (
+      (insight.kind === 'bridge' || insight.kind === 'pattern') &&
+      documentIds.length < 2
+    ) {
+      return [];
+    }
+
+    const { edgeId, ...rest } = insight;
+    return [
+      {
+        ...rest,
+        evidence,
+        documentIds,
+        ...(edgeId && connectionIds.has(edgeId) ? { edgeId } : {}),
+      },
+    ];
+  });
+
   return {
     ...state,
     workspaces: state.workspaces.map((workspace) => ({
@@ -35,19 +76,8 @@ export function removeDocumentFromState(
     })),
     documents: state.documents.filter((document) => document.id !== documentId),
     concepts,
-    connections: state.connections.flatMap((connection) => {
-      if (removedConceptIds.has(connection.from) || removedConceptIds.has(connection.to)) {
-        return [];
-      }
-      if (!connection.evidence) return [connection];
-      const evidence = connection.evidence.filter(
-        (entry) => entry.documentId !== documentId,
-      );
-      return evidence.length > 0 ? [{ ...connection, evidence }] : [];
-    }),
-    insights: state.insights.filter(
-      (insight) => !insight.conceptIds.some((conceptId) => removedConceptIds.has(conceptId)),
-    ),
+    connections,
+    insights,
   };
 }
 

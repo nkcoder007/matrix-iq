@@ -47,12 +47,39 @@ export function pruneAnalysisForRemovedDocuments(
       (entry) => !removedDocumentIds.has(entry.documentId),
     );
     if (evidence.length === 0) return [];
+    if (connection.evidenceLevel === 'inference' && evidence.length < 2) return [];
     return [{ ...connection, evidence }];
   });
 
-  session.insights = session.insights.filter(
-    (insight) => !insight.conceptIds.some((id) => removedConceptIds.has(id)),
-  );
+  const connectionIds = new Set(session.connections.map((connection) => connection.id));
+  session.insights = session.insights.flatMap((insight) => {
+    if (insight.conceptIds.some((id) => removedConceptIds.has(id))) return [];
+    if (!insight.evidence) return [insight];
+
+    const evidence = insight.evidence.filter(
+      (entry) => !removedDocumentIds.has(entry.documentId),
+    );
+    if (evidence.length === 0) return [];
+    if (insight.evidenceLevel === 'inference' && evidence.length < 2) return [];
+
+    const documentIds = [...new Set(evidence.map((entry) => entry.documentId))];
+    if (
+      (insight.kind === 'bridge' || insight.kind === 'pattern') &&
+      documentIds.length < 2
+    ) {
+      return [];
+    }
+
+    const { edgeId, ...rest } = insight;
+    return [
+      {
+        ...rest,
+        evidence,
+        documentIds,
+        ...(edgeId && connectionIds.has(edgeId) ? { edgeId } : {}),
+      },
+    ];
+  });
   session.dismissedIds = session.dismissedIds.filter((id) =>
     session.insights.some((insight) => insight.id === id),
   );

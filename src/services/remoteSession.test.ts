@@ -80,6 +80,18 @@ describe('session-scoped remote metadata', () => {
     expect(storage.get(STORAGE_KEY)).toContain('"sessionId":"session-1"');
   });
 
+  it('keeps earlier sources when another source is added to the same project', async () => {
+    const remote = await loadModule();
+    remote.rememberRemoteProject('local-1', 'remote-1');
+    remote.rememberRemoteDocuments('remote-1', [source('doc-1', 'remote-1')]);
+    remote.rememberRemoteDocuments('remote-1', [source('doc-2', 'remote-1')]);
+
+    expect(remote.getRemoteDocuments().map((document) => document.id)).toEqual([
+      'doc-2',
+      'doc-1',
+    ]);
+  });
+
   it('discards old metadata as soon as the backend session changes', async () => {
     const remote = await loadModule();
     remote.rememberRemoteProject('local-1', 'remote-1');

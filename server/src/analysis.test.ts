@@ -572,10 +572,19 @@ describe('Phase 3 — AI analysis', () => {
         concept.evidence.every((entry) => entry.documentId !== 'doc-ants'),
       ),
     ).toBe(true);
-    expect(body.connections).toHaveLength(1);
-    expect(
-      body.connections[0]?.evidence.every((entry) => entry.documentId !== 'doc-ants'),
-    ).toBe(true);
+    expect(body.connections).toHaveLength(0);
+
+    const insights = await request(app, 'GET', `/projects/${PROJECT_A}/insights`);
+    expect(insights.json).toMatchObject({ insights: [] });
+
+    const status = await request(app, 'GET', `/projects/${PROJECT_A}/analysis`);
+    expect(status.json).toMatchObject({
+      status: 'stale',
+      documentCount: 1,
+      conceptCount: 2,
+      connectionCount: 0,
+      insightCount: 0,
+    });
   });
 
   it('requires sources and a configured provider', async () => {

@@ -395,16 +395,30 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     async (localProjectId: string, remoteProjectId: string) => {
       if (getRemoteProject(localProjectId) !== remoteProjectId) return;
       try {
-        const [graph, insights] = await Promise.all([
+        const [graphResult, insightsResult] = await Promise.allSettled([
           api.projects.graph(remoteProjectId),
           api.projects.insights(remoteProjectId),
         ]);
         if (getRemoteProject(localProjectId) !== remoteProjectId) return;
+        if (graphResult.status === 'rejected') throw graphResult.reason;
+        const insights = insightsResult.status === 'fulfilled' ? insightsResult.value : null;
         setState((current) =>
-          mergeRemoteGraph(current, remoteProjectId, { ...graph, insights: insights.insights }),
+          mergeRemoteGraph(current, remoteProjectId, {
+            ...graphResult.value,
+            insights: insights?.insights ?? [],
+          }),
         );
-      } catch {
-        // Source metadata remains visible if the temporary session disappeared.
+        if (!insights) {
+          setAnalysisError('The graph loaded, but its insights could not be loaded. Try again.');
+        } else {
+          setAnalysisError(null);
+        }
+      } catch (cause) {
+        setAnalysisError(
+          cause instanceof ApiError
+            ? cause.message
+            : 'The analysis results could not be loaded. Try again.',
+        );
       }
     },
     [],
@@ -421,7 +435,11 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     try {
       const status = await api.analysis.status(remoteProjectId);
       setAnalysisStatus(status);
-      setAnalysisError(status.status === 'failed' ? (status.error ?? null) : null);
+      setAnalysisError(
+        status.status === 'failed'
+          ? (status.error ?? 'The last analysis did not finish.')
+          : null,
+      );
       if (status.status === 'complete') {
         await loadRemoteGraph(workspace.id, remoteProjectId);
       }
