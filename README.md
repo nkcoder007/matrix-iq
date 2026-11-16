@@ -239,6 +239,56 @@ AI_MAX_TOTAL_CHARS=60000
 Expired sessions are rejected on access as well as by the periodic sweep. All state is in memory
 and disappears when the backend process exits.
 
+## Production deployment (Vercel + Render)
+
+The repository includes `vercel.json` for the Vite SPA and `render.yaml` for the backend. Nothing is
+deployed automatically by these files.
+
+### Render — backend
+
+Create a **Web Service** from this repository and use:
+
+- **Root Directory:** `server`
+- **Runtime:** Node 22
+- **Build Command:** `npm ci --include=dev && npm run build`
+- **Start Command:** `npm start`
+- **Health Check Path:** `/health`
+- **Environment:** `NODE_ENV=production`, `CORS_ORIGINS=https://<your-app>.vercel.app`,
+  `GEMINI_API_KEY=<server-only key>`, and `GEMINI_MODEL=gemini-3.5-flash`
+- Do **not** set `PORT`; Render injects it. The server binds to `0.0.0.0` by default.
+
+`CORS_ORIGINS` is a comma-separated exact-origin allowlist. It must contain the Vercel production
+origin, with no trailing slash. Keep `GEMINI_API_KEY` only in Render; it is never read by Vite or
+sent to the browser. A Render free instance can spin down, which clears every in-memory session and
+all uploaded sources/analysis, so reconnect or re-upload after a cold start.
+
+### Vercel — frontend
+
+Import the repository and use:
+
+- **Framework Preset:** Vite
+- **Root Directory:** repository root
+- **Install Command:** `npm ci --include=dev`
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+
+Set these build-time variables in Vercel for both Production and Preview:
+
+```bash
+VITE_API_MODE=remote
+VITE_API_BASE_URL=https://<your-render-service>.onrender.com
+```
+
+Use the Render service origin only: do not append `/api`, a trailing path, or localhost. Production
+builds fail fast unless both variables are present, the URL is HTTPS, and it is not a loopback
+host. `vercel.json` rewrites unknown paths to `index.html`, so direct visits to `/p/:id/graph`,
+`/p/:id/insights`, and other BrowserRouter routes work on refresh. If you use Vercel preview URLs,
+add each browser origin to `CORS_ORIGINS` on Render; otherwise use the production domain.
+
+After both services are live, verify `GET /health`, then exercise session creation, source upload,
+analysis, graph and insights in the browser. The frontend calls Render directly; the `/api` Vite
+dev proxy is not used in production.
+
 Expected contract (relative to the base URL):
 
 | Method | Path | Purpose |

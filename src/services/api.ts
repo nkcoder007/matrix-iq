@@ -20,12 +20,20 @@ export interface BackendConfig {
 }
 
 const requestedMode = import.meta.env.VITE_API_MODE;
-const requestedBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const requestedBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
+const mode: ApiMode =
+  requestedMode === 'local'
+    ? 'local'
+    : requestedMode === 'remote' || import.meta.env.PROD
+      ? 'remote'
+      : 'local';
 
 export const backendConfig: BackendConfig = {
-  mode: requestedMode === 'remote' ? 'remote' : 'local',
+  mode,
+  // Production uses the direct Render origin. The /api path is only a local
+  // Vite proxy fallback and has no matching route on Vercel.
   baseUrl: requestedBaseUrl || '/api',
-  configured: requestedMode === 'remote' && Boolean(requestedBaseUrl),
+  configured: mode === 'remote' && Boolean(requestedBaseUrl),
 };
 
 export const SESSION_STORAGE_KEY = 'matrixiq-session-id';

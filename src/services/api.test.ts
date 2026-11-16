@@ -242,6 +242,18 @@ describe('API session integration', () => {
     expect(events).toEqual([null, 'fresh-session']);
   });
 
+  it('normalizes a trailing slash on a configured API origin', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ok: true }));
+    vi.resetModules();
+    vi.stubEnv('VITE_API_MODE', 'remote');
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.matrixiq.test/');
+    apiModule = await import('./api');
+
+    await apiModule.api.health();
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('https://api.matrixiq.test/health');
+  });
+
   it('keeps local mode network-free', async () => {
     vi.resetModules();
     vi.stubEnv('VITE_API_MODE', 'local');

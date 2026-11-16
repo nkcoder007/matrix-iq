@@ -49,6 +49,16 @@ describe('backend configuration', () => {
     ).toEqual(['https://app.example.com', 'https://admin.example.com']);
   });
 
+  it('does not inherit localhost CORS origins in production', () => {
+    expect(readCorsOrigins({ NODE_ENV: 'production' })).toEqual([]);
+    expect(
+      readCorsOrigins({
+        NODE_ENV: 'production',
+        CORS_ORIGINS: 'https://matrixiq.vercel.app/, https://matrixiq.vercel.app',
+      }),
+    ).toEqual(['https://matrixiq.vercel.app']);
+  });
+
   it('reads upload limits with safe defaults', () => {
     expect(readUploadConfig({})).toEqual({
       maxBytes: DEFAULT_UPLOAD_MAX_BYTES,

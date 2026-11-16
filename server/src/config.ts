@@ -33,12 +33,20 @@ export function readSessionStoreConfig(
 }
 
 export function readCorsOrigins(env: NodeJS.ProcessEnv = process.env): string[] {
-  const configured = env.CORS_ORIGINS;
-  if (configured === undefined) return [...DEFAULT_CORS_ORIGINS];
-  return configured
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const configured = env.CORS_ORIGINS?.trim();
+  if (!configured) {
+    // Local development keeps the Vite origins. Production must declare the
+    // deployed browser origin explicitly rather than inheriting localhost.
+    return env.NODE_ENV === 'production' ? [] : [...DEFAULT_CORS_ORIGINS];
+  }
+  return [
+    ...new Set(
+      configured
+        .split(',')
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
+        .filter(Boolean),
+    ),
+  ];
 }
 
 export interface UploadConfig {
